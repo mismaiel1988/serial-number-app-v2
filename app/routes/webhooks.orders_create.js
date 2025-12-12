@@ -1,10 +1,9 @@
 import { authenticate } from "../shopify.server.js";
-import { prisma } from "../db.server.js";
+import prisma from "../db.server.js";
 
 export const action = async ({ request }) => {
   const { topic, shop, payload } = await authenticate.webhook(request);
 
-  // Only handle order creation
   if (topic !== "ORDERS_CREATE") {
     return new Response("Ignored", { status: 200 });
   }
@@ -12,9 +11,7 @@ export const action = async ({ request }) => {
   const order = payload;
 
   await prisma.order.upsert({
-    where: {
-      shopifyOrderId: String(order.id),
-    },
+    where: { shopifyOrderId: String(order.id) },
     update: {},
     create: {
       shopifyOrderId: String(order.id),
