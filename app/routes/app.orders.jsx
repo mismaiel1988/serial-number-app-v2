@@ -16,7 +16,9 @@ export const loader = async ({ request }) => {
     orderBy: { createdAt: "desc" },
   });
 
-  return Response.json({ orders });
+return new Response(JSON.stringify({ orders }), {
+  headers: { "Content-Type": "application/json" },
+});
 };
 
 export default function OrdersPage() {
