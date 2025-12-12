@@ -1,9 +1,10 @@
 import { useLoaderData, Link } from "react-router";
 import prisma from "../db.server.js";
-import { authenticate } from "../shopify.server.js";
+import shopify from "../shopify.server.js";
 
 export const loader = async ({ request }) => {
-  await authenticate(request);
+  // ✅ Embedded admin auth (no login UI)
+  await shopify.authenticate.admin(request);
 
   const orders = await prisma.order.findMany({
     include: {
@@ -25,20 +26,17 @@ export default function OrdersPage() {
     <div style={{ padding: "20px" }}>
       <h1>Saddle Orders</h1>
 
-      {orders.map((order) => (
-        <div
-          key={order.id}
-          style={{
-            marginBottom: "16px",
-            padding: "12px",
-            border: "1px solid #ddd",
-          }}
-        >
-          <strong>Order #{order.orderNumber}</strong>
-          <br />
-          <Link to={`/app/orders/${order.id}`}>View serial numbers</Link>
-        </div>
-      ))}
+      {orders.length === 0 && <p>No orders found.</p>}
+
+      <ul>
+        {orders.map((order) => (
+          <li key={order.id} style={{ marginBottom: "12px" }}>
+            <Link to={`/app/orders/${order.id}`}>
+              Order #{order.orderNumber}
+            </Link>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
