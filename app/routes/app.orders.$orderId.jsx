@@ -1,10 +1,9 @@
 import { useLoaderData, Link } from "react-router";
 import prisma from "../db.server.js";
-import shopify from "../shopify.server.js";
+import { authenticate } from "../shopify.server.js";
 
 export const loader = async ({ request, params }) => {
-  // ✅ Embedded admin auth (NO login redirect)
-  await shopify.authenticate.admin(request);
+  await authenticate.admin(request);
 
   const order = await prisma.order.findUnique({
     where: { id: params.orderId },
@@ -20,9 +19,7 @@ export const loader = async ({ request, params }) => {
     throw new Response("Order not found", { status: 404 });
   }
 
-return new Response(JSON.stringify({ order }), {
-  headers: { "Content-Type": "application/json" },
-});
+  return { order }; // ✅ IMPORTANT
 };
 
 export default function OrderDetailPage() {
@@ -38,11 +35,13 @@ export default function OrderDetailPage() {
         <div key={item.id} style={{ marginTop: "16px" }}>
           <h3>{item.title}</h3>
 
-          {item.serialNumbers.length === 0 && <p>No serial numbers yet</p>}
+          {item.serialNumbers.length === 0 && (
+            <p>No serial numbers yet</p>
+          )}
 
           <ul>
             {item.serialNumbers.map((sn) => (
-              <li key={sn.id}>{sn.serial}</li>
+              <li key={sn.id}>{sn.value}</li>
             ))}
           </ul>
         </div>
