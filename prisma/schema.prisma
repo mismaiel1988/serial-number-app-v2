@@ -1,19 +1,21 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
+// ===============================
+// Prisma Client
+// ===============================
 generator client {
   provider = "prisma-client-js"
 }
 
-// Note that some adapters may set a maximum length for the String type by default, please ensure your strings are long
-// enough when changing adapters.
-// See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
+// ===============================
+// Database
+// ===============================
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-
+// ===============================
+// Shopify Session (required)
+// ===============================
 model Session {
   id            String    @id
   shop          String
@@ -22,6 +24,7 @@ model Session {
   scope         String?
   expires       DateTime?
   accessToken   String
+
   userId        BigInt?
   firstName     String?
   lastName      String?
@@ -30,24 +33,34 @@ model Session {
   locale        String?
   collaborator  Boolean?  @default(false)
   emailVerified Boolean?  @default(false)
+
   refreshToken        String?
   refreshTokenExpires DateTime?
 }
-model Order {
-  id               String   @id @default(cuid())
-  shopifyOrderId   String   @unique
-  orderNumber      Int
-  shopDomain       String
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
 
-  lineItems        LineItem[]
-  serialNumbers    SerialNumber[]
+// ===============================
+// Order
+// ===============================
+model Order {
+  id             String   @id @default(cuid())
+  shopifyOrderId String   @unique
+  orderNumber    Int
+  shopDomain     String
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  lineItems      LineItem[]
+  serialNumbers  SerialNumber[]
 }
 
+// ===============================
+// Line Item
+// ===============================
 model LineItem {
   id               String   @id @default(cuid())
   shopifyLineItemId String   @unique
+
   title            String
   sku              String?
   quantity         Int
@@ -59,25 +72,28 @@ model LineItem {
   serialNumbers    SerialNumber[]
 }
 
+// ===============================
+// Serial Number
+// ===============================
 model SerialNumber {
-  id               String   @id @default(cuid())
+  id              String   @id @default(cuid())
 
-  /** XX-XXXXX or XX-XXXXXX */
-  serial           String   @unique
+  /// Format: XX-XXXXX or XX-XXXXXX
+  serial          String   @unique
 
-  shopDomain       String
-  isLocked         Boolean  @default(true)
+  shopDomain      String
+  isLocked        Boolean  @default(true)
 
-  /** Warranty / authenticity */
-  warrantyActive   Boolean  @default(false)
-  warrantyExpires  DateTime?
+  /// Warranty / authenticity
+  warrantyActive  Boolean  @default(false)
+  warrantyExpires DateTime?
 
-  /** Relations */
-  orderId          String
-  order            Order    @relation(fields: [orderId], references: [id])
+  /// Relations
+  orderId         String
+  order           Order    @relation(fields: [orderId], references: [id])
 
-  lineItemId       String
-  lineItem         LineItem @relation(fields: [lineItemId], references: [id])
+  lineItemId      String
+  lineItem        LineItem @relation(fields: [lineItemId], references: [id])
 
-  createdAt        DateTime @default(now())
+  createdAt       DateTime @default(now())
 }
