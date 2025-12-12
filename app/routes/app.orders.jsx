@@ -3,7 +3,7 @@ import prisma from "../db.server.js";
 import { authenticate } from "../shopify.server.js";
 
 export const loader = async ({ request }) => {
-  await authenticate.admin(request);
+  await authenticate(request);
 
   const orders = await prisma.order.findMany({
     include: {
