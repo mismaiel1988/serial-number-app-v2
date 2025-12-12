@@ -9,9 +9,8 @@ export default function AppHome() {
         Manage saddle serial numbers, warranty tracking, and order assignments.
       </p>
 
-      <Link to="/app/orders">
-        → View Orders
-      </Link>
+      <a href="/app/orders">View Orders</a>
+
     </div>
   );
 }
