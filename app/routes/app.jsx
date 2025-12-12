@@ -1,7 +1,10 @@
-import { redirect } from "@react-router/node";
-
 export const loader = async () => {
-  return redirect("/app/orders");
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: "/app/orders",
+    },
+  });
 };
 
 export default function AppIndexRedirect() {
