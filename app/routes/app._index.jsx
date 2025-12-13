@@ -8,7 +8,7 @@ import {
   saveSerialNumber, 
   getAllSerialNumbers,
   exportSerialNumbersToCSV 
-} from "~/services/orders.server.js";
+} from "~/services/orders.server";
 
 
 export const loader = async ({ request }) => {
