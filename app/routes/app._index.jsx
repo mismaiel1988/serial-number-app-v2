@@ -105,7 +105,7 @@ export const loader = async ({ request }) => {
             acc[attr.key] = attr.value;
             return acc;
           }, {}),
-          isSaddle: tags.some(tag => tag.toLowerCase().includes('saddle')),
+          isSaddle: tags.some(tag => tag.toLowerCase() === 'saddles'),
         };
       }),
     })) || [];
