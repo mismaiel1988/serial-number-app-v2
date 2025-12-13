@@ -19,7 +19,7 @@ export const loader = async ({ request, params }) => {
     throw new Response("Order not found", { status: 404 });
   }
 
-  return { order }; // ✅ IMPORTANT
+  return { order }; // ✅ THIS is the critical line
 };
 
 export default function OrderDetailPage() {
