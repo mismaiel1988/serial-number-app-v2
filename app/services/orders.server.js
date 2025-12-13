@@ -124,3 +124,161 @@ export async function getOrders(admin, { cursor = null, searchQuery = null } = {
     pageInfo: data.data.orders.pageInfo,
   };
 }
+
+export async function getSerialNumbers(admin, lineItemId) {
+  // Query metafield for serial numbers on this line item
+  const response = await admin.graphql(
+    `#graphql
+      query getLineItemMetafield($id: ID!) {
+        lineItem(id: $id) {
+          id
+          customAttributes {
+            key
+            value
+          }
+        }
+      }
+    `,
+    {
+      variables: {
+        id: lineItemId,
+      },
+    }
+  );
+
+  const data = await response.json();
+  const serialAttr = data.data?.lineItem?.customAttributes?.find(
+    attr => attr.key === 'serial_number'
+  );
+  
+  return serialAttr?.value || '';
+}
+
+export async function saveSerialNumber(admin, orderId, lineItemId, serialNumber) {
+  // Save serial number as order metafield with line item reference
+  const namespace = 'saddle_serials';
+  const key = `line_item_${lineItemId.split('/').pop()}`;
+  
+  const response = await admin.graphql(
+    `#graphql
+      mutation setOrderMetafield($metafields: [MetafieldsSetInput!]!) {
+        metafieldsSet(metafields: $metafields) {
+          metafields {
+            id
+            namespace
+            key
+            value
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `,
+    {
+      variables: {
+        metafields: [
+          {
+            ownerId: orderId,
+            namespace: namespace,
+            key: key,
+            value: serialNumber,
+            type: 'single_line_text_field',
+          },
+        ],
+      },
+    }
+  );
+
+  const data = await response.json();
+  
+  if (data.data?.metafieldsSet?.userErrors?.length > 0) {
+    throw new Error(data.data.metafieldsSet.userErrors[0].message);
+  }
+  
+  return data.data?.metafieldsSet?.metafields[0];
+}
+
+export async function getAllSerialNumbers(admin, orderId) {
+  const response = await admin.graphql(
+    `#graphql
+      query getOrderMetafields($id: ID!) {
+        order(id: $id) {
+          id
+          name
+          metafields(first: 100, namespace: "saddle_serials") {
+            edges {
+              node {
+                id
+                key
+                value
+                namespace
+              }
+            }
+          }
+        }
+      }
+    `,
+    {
+      variables: {
+        id: orderId,
+      },
+    }
+  );
+
+  const data = await response.json();
+  return data.data?.order?.metafields?.edges.map(({ node }) => node) || [];
+}
+
+export async function exportSerialNumbersToCSV(admin) {
+  // This will fetch all orders with serial numbers and format as CSV
+  let allSerials = [];
+  let hasNextPage = true;
+  let cursor = null;
+
+  while (hasNextPage) {
+    const { orders, pageInfo } = await getOrders(admin, { cursor });
+    
+    for (const order of orders) {
+      const metafields = await getAllSerialNumbers(admin, order.id);
+      
+      for (const metafield of metafields) {
+        const lineItemId = `gid://shopify/LineItem/${metafield.key.replace('line_item_', '')}`;
+        const lineItem = order.lineItems.find(item => item.id === lineItemId);
+        
+        if (lineItem) {
+          allSerials.push({
+            orderNumber: order.orderNumber,
+            orderDate: order.createdAt,
+            productTitle: lineItem.title,
+            sku: lineItem.sku,
+            serialNumber: metafield.value,
+            lineItemId: lineItem.id,
+          });
+        }
+      }
+    }
+    
+    hasNextPage = pageInfo.hasNextPage;
+    cursor = pageInfo.endCursor;
+  }
+
+  // Convert to CSV
+  const headers = ['Order Number', 'Order Date', 'Product', 'SKU', 'Serial Number', 'Line Item ID'];
+  const rows = allSerials.map(s => [
+    s.orderNumber,
+    new Date(s.orderDate).toLocaleDateString(),
+    s.productTitle,
+    s.sku || '',
+    s.serialNumber,
+    s.lineItemId,
+  ]);
+
+  const csvContent = [
+    headers.join(','),
+    ...rows.map(row => row.map(cell => `"${cell}"`).join(',')),
+  ].join('\n');
+
+  return csvContent;
+}

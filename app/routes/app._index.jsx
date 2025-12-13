@@ -8,7 +8,8 @@ import {
   saveSerialNumber, 
   getAllSerialNumbers,
   exportSerialNumbersToCSV 
-} from "../services/orders.server.js";
+} from "~/services/orders.server.js";
+
 
 export const loader = async ({ request }) => {
   const { admin } = await authenticate.admin(request);
