@@ -65,12 +65,19 @@ export const loader = async ({ request }) => {
 
     const data = await response.json();
     
+    console.log('GraphQL response received');
+    
     if (data.errors) {
       console.error('GraphQL errors:', data.errors);
-      throw new Error(`GraphQL error: ${data.errors[0].message}`);
+      return { orders: [], error: data.errors[0].message };
     }
     
-    const orders = data?.data?.orders?.edges?.map(({ node }) => ({
+    if (!data?.data?.orders?.edges) {
+      console.error('No orders data in response');
+      return { orders: [], error: 'No orders data received' };
+    }
+    
+    const orders = data.data.orders.edges.map(({ node }) => ({
       id: node.id,
       name: node.name,
       createdAt: node.createdAt,
@@ -108,23 +115,31 @@ export const loader = async ({ request }) => {
           isSaddle: tags.some(tag => tag.toLowerCase().includes('saddle')),
         };
       }),
-    })) || [];
+    }));
     
- // Debug: show all orders and their tags
-console.log('Total orders found:', orders.length);
-orders.forEach(order => {
-  console.log(`Order ${order.name}:`);
-  order.lineItems.forEach(item => {
-    console.log(`  - ${item.title}`);
-    console.log(`    Tags: ${item.tags.join(', ')}`);
-    console.log(`    isSaddle: ${item.isSaddle}`);
-  });
-});
-
-// Temporarily return ALL orders to see tags
-return { orders: orders };
-
-
+    console.log(`Total orders: ${orders.length}`);
+    
+    // Log first order's line items and tags for debugging
+    if (orders.length > 0) {
+      console.log(`First order ${orders[0].name} has ${orders[0].lineItems.length} items:`);
+      orders[0].lineItems.forEach(item => {
+        console.log(`  - ${item.title}, Tags: [${item.tags.join(', ')}], isSaddle: ${item.isSaddle}`);
+      });
+    }
+    
+    // Filter to only show orders with saddles (by tag)
+    const saddleOrders = orders.filter(order => 
+      order.lineItems.some(item => item.isSaddle)
+    );
+    
+    console.log(`Saddle orders found: ${saddleOrders.length}`);
+    
+    return { orders: saddleOrders };
+  } catch (error) {
+    console.error('Loader error:', error);
+    return { orders: [], error: error.message };
+  }
+};
 
 export default function Index() {
   const { orders, error } = useLoaderData();
