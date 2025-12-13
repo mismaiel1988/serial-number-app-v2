@@ -1,8 +1,7 @@
-import { useLoaderData, Link } from "react-router";
+import { useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 
-// SERVER
 export async function loader({ request }) {
   await authenticate.admin(request);
 
@@ -13,27 +12,18 @@ export async function loader({ request }) {
   return { orders };
 }
 
-// CLIENT
 export default function OrdersPage() {
   const { orders } = useLoaderData();
 
   return (
-    <div style={{ padding: "20px" }}>
+    <div style={{ padding: 24 }}>
       <h1>Orders</h1>
 
-      {orders.length === 0 ? (
-        <p>No orders found.</p>
-      ) : (
-        <ul>
-          {orders.map((order) => (
-            <li key={order.id}>
-              <Link to={`/app/orders/${order.id}`}>
-                Order #{order.orderNumber || order.id}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
+      <ul>
+        {orders.map((o) => (
+          <li key={o.id}>Order #{o.orderNumber}</li>
+        ))}
+      </ul>
     </div>
   );
 }
