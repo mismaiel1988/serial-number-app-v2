@@ -41,6 +41,7 @@ export const loader = async ({ request }) => {
                       product {
                         id
                         productType
+                        tags
                       }
                       variant {
                         selectedOptions {
@@ -86,6 +87,7 @@ export const loader = async ({ request }) => {
       lineItems: node.lineItems.edges.map(({ node: item }) => {
         const options = item.variant?.selectedOptions || [];
         const customAttributes = item.customAttributes || [];
+        const tags = item.product?.tags || [];
         
         return {
           id: item.id,
@@ -94,6 +96,7 @@ export const loader = async ({ request }) => {
           sku: item.sku,
           variantTitle: item.variantTitle,
           productType: item.product?.productType,
+          tags: tags,
           options: options.reduce((acc, opt) => {
             acc[opt.name] = opt.value;
             return acc;
@@ -102,13 +105,12 @@ export const loader = async ({ request }) => {
             acc[attr.key] = attr.value;
             return acc;
           }, {}),
-          isSaddle: item.product?.productType?.toLowerCase().includes('saddles') || 
-                    item.title?.toLowerCase().includes('saddles'),
+          isSaddle: tags.some(tag => tag.toLowerCase().includes('saddle')),
         };
       }),
     })) || [];
     
-    // Filter to only show orders with saddles
+    // Filter to only show orders with saddles (by tag)
     const saddleOrders = orders.filter(order => 
       order.lineItems.some(item => item.isSaddle)
     );
