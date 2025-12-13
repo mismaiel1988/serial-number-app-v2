@@ -10,27 +10,17 @@ import {
   exportSerialNumbersToCSV 
 } from "../services/orders.server";
 
-
 export const loader = async ({ request }) => {
   const { admin } = await authenticate.admin(request);
   const url = new URL(request.url);
   const searchQuery = url.searchParams.get('search');
   
-  // Load ALL orders by paginating through everything
-  let allOrders = [];
-  let hasNextPage = true;
-  let cursor = null;
+  // Load first 50 orders only
+  const { orders, pageInfo } = await getOrders(admin, { cursor: null, searchQuery });
   
-  while (hasNextPage) {
-    const { orders, pageInfo } = await getOrders(admin, { cursor, searchQuery });
-    allOrders = [...allOrders, ...orders];
-    hasNextPage = pageInfo.hasNextPage;
-    cursor = pageInfo.endCursor;
-  }
-  
-  // Get serial numbers for all orders
+  // Get serial numbers for these orders
   const ordersWithSerials = await Promise.all(
-    allOrders.map(async (order) => {
+    orders.map(async (order) => {
       const metafields = await getAllSerialNumbers(admin, order.id);
       const serialMap = {};
       
@@ -51,6 +41,7 @@ export const loader = async ({ request }) => {
   
   return { 
     orders: ordersWithSerials,
+    pageInfo,
     searchQuery: searchQuery || '',
   };
 };
@@ -85,7 +76,7 @@ export const action = async ({ request }) => {
 };
 
 export default function Index() {
-  const { orders, searchQuery } = useLoaderData();
+  const { orders, pageInfo, searchQuery } = useLoaderData();
   const fetcher = useFetcher();
   const shopify = useAppBridge();
   const [search, setSearch] = useState(searchQuery);
