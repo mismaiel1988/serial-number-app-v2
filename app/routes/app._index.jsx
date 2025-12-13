@@ -11,40 +11,63 @@ import {
 } from "../services/orders.server";
 
 export const loader = async ({ request }) => {
-  const { admin } = await authenticate.admin(request);
-  const url = new URL(request.url);
-  const searchQuery = url.searchParams.get('search');
-  
-  // Load first 50 orders only
-  const { orders, pageInfo } = await getOrders(admin, { cursor: null, searchQuery });
-  
-  // Get serial numbers for these orders
-  const ordersWithSerials = await Promise.all(
-    orders.map(async (order) => {
-      const metafields = await getAllSerialNumbers(admin, order.id);
-      const serialMap = {};
-      
-      metafields.forEach(mf => {
-        const lineItemId = `gid://shopify/LineItem/${mf.key.replace('line_item_', '')}`;
-        serialMap[lineItemId] = mf.value;
-      });
-      
-      return {
-        ...order,
-        lineItems: order.lineItems.map(item => ({
-          ...item,
-          serialNumber: serialMap[item.id] || '',
-        })),
-      };
-    })
-  );
-  
-  return { 
-    orders: ordersWithSerials,
-    pageInfo,
-    searchQuery: searchQuery || '',
-  };
+  try {
+    const { admin } = await authenticate.admin(request);
+    const url = new URL(request.url);
+    const searchQuery = url.searchParams.get('search');
+    
+    console.log('Loading orders...');
+    
+    // Load first 50 orders only
+    const { orders, pageInfo } = await getOrders(admin, { cursor: null, searchQuery });
+    
+    console.log(`Found ${orders.length} saddle orders`);
+    
+    // Get serial numbers for these orders
+    const ordersWithSerials = await Promise.all(
+      orders.map(async (order) => {
+        try {
+          const metafields = await getAllSerialNumbers(admin, order.id);
+          const serialMap = {};
+          
+          metafields.forEach(mf => {
+            const lineItemId = `gid://shopify/LineItem/${mf.key.replace('line_item_', '')}`;
+            serialMap[lineItemId] = mf.value;
+          });
+          
+          return {
+            ...order,
+            lineItems: order.lineItems.map(item => ({
+              ...item,
+              serialNumber: serialMap[item.id] || '',
+            })),
+          };
+        } catch (error) {
+          console.error(`Error loading serials for order ${order.id}:`, error);
+          return {
+            ...order,
+            lineItems: order.lineItems.map(item => ({
+              ...item,
+              serialNumber: '',
+            })),
+          };
+        }
+      })
+    );
+    
+    console.log('Orders loaded successfully');
+    
+    return { 
+      orders: ordersWithSerials,
+      pageInfo,
+      searchQuery: searchQuery || '',
+    };
+  } catch (error) {
+    console.error('Loader error:', error);
+    throw new Error(`Failed to load orders: ${error.message}`);
+  }
 };
+
 
 export const action = async ({ request }) => {
   const { admin } = await authenticate.admin(request);
