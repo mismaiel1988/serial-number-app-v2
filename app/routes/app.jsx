@@ -9,8 +9,6 @@ export default function AppLayout() {
         Manage saddle serial numbers, warranty tracking, and order assignments.
       </p>
 
-      <Link to="/app/orders">View Orders</Link>
-
       {/* 👇 THIS IS THE CRITICAL LINE */}
       <Outlet />
     </div>
