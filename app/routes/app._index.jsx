@@ -110,17 +110,21 @@ export const loader = async ({ request }) => {
       }),
     })) || [];
     
-    // Filter to only show orders with saddles (by tag)
-    const saddleOrders = orders.filter(order => 
-      order.lineItems.some(item => item.isSaddle)
-    );
-    
-    return { orders: saddleOrders };
-  } catch (error) {
-    console.error('Loader error:', error);
-    return { orders: [], error: error.message };
-  }
-};
+ // Debug: show all orders and their tags
+console.log('Total orders found:', orders.length);
+orders.forEach(order => {
+  console.log(`Order ${order.name}:`);
+  order.lineItems.forEach(item => {
+    console.log(`  - ${item.title}`);
+    console.log(`    Tags: ${item.tags.join(', ')}`);
+    console.log(`    isSaddle: ${item.isSaddle}`);
+  });
+});
+
+// Temporarily return ALL orders to see tags
+return { orders: orders };
+
+
 
 export default function Index() {
   const { orders, error } = useLoaderData();
