@@ -102,8 +102,8 @@ export const loader = async ({ request }) => {
             acc[attr.key] = attr.value;
             return acc;
           }, {}),
-          isSaddle: item.product?.productType?.toLowerCase().includes('saddle') || 
-                    item.title?.toLowerCase().includes('saddle'),
+          isSaddle: item.product?.productType?.toLowerCase().includes('saddles') || 
+                    item.title?.toLowerCase().includes('saddles'),
         };
       }),
     })) || [];
