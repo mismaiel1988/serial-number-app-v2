@@ -3,36 +3,57 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server.js";
 
 export const loader = async ({ request }) => {
-  const { admin } = await authenticate.admin(request);
-  
-  const response = await admin.graphql(
-    `#graphql
-      query getOrders {
-        orders(first: 20, reverse: true) {
-          edges {
-            node {
-              id
-              name
-              createdAt
+  try {
+    const { admin } = await authenticate.admin(request);
+    
+    const response = await admin.graphql(
+      `#graphql
+        query getOrders {
+          orders(first: 20, reverse: true) {
+            edges {
+              node {
+                id
+                name
+                createdAt
+              }
             }
           }
         }
-      }
-    `
-  );
+      `
+    );
 
-  const data = await response.json();
-  const orders = data.data.orders.edges.map(({ node }) => node);
-  
-  return { orders };
+    const data = await response.json();
+    
+    // Check for GraphQL errors
+    if (data.errors) {
+      console.error('GraphQL errors:', data.errors);
+      return { orders: [], error: data.errors[0].message };
+    }
+    
+    // Safely extract orders
+    const orders = data?.data?.orders?.edges?.map(({ node }) => node) || [];
+    
+    return { orders };
+  } catch (error) {
+    console.error('Loader error:', error);
+    return { orders: [], error: error.message };
+  }
 };
 
 export default function Index() {
-  const { orders } = useLoaderData();
+  const { orders, error } = useLoaderData();
 
   return (
     <s-page heading="Saddle Serial Number Manager">
-      <s-section heading={`Orders (${orders.length})`}>
+      {error && (
+        <s-section>
+          <s-banner tone="critical">
+            <s-text>Error: {error}</s-text>
+          </s-banner>
+        </s-section>
+      )}
+      
+      <s-section heading={`Orders (${orders?.length || 0})`}>
         {orders && orders.length > 0 ? (
           <s-stack direction="block" gap="base">
             {orders.map((order) => (
