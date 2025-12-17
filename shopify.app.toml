@@ -4,7 +4,7 @@ application_url = "https://serial-number-app-v2.onrender.com"
 embedded = true
 
 [access_scopes]
-scopes = "write_products,read_orders,write_orders,read_customers"
+scopes = "write_products,read_orders,write_order_edits,read_products,read_customers,write_orders"
 
 [auth]
 redirect_urls = [
