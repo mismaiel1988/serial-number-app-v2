@@ -6,10 +6,12 @@ export const loader = async ({ request }) => {
   try {
     const { admin } = await authenticate.admin(request);
     
+    console.log('Fetching orders...');
+    
     const response = await admin.graphql(
       `#graphql
-        query getOrders {
-          orders(first: 20, reverse: true) {
+        query {
+          orders(first: 50) {
             edges {
               node {
                 id
@@ -24,14 +26,18 @@ export const loader = async ({ request }) => {
 
     const data = await response.json();
     
-    // Check for GraphQL errors
+    console.log('Full GraphQL response:', JSON.stringify(data, null, 2));
+    
     if (data.errors) {
       console.error('GraphQL errors:', data.errors);
       return { orders: [], error: data.errors[0].message };
     }
     
-    // Safely extract orders
-    const orders = data?.data?.orders?.edges?.map(({ node }) => node) || [];
+    const edges = data?.data?.orders?.edges || [];
+    console.log(`Found ${edges.length} order edges`);
+    
+    const orders = edges.map(({ node }) => node);
+    console.log(`Mapped to ${orders.length} orders`);
     
     return { orders };
   } catch (error) {
