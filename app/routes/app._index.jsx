@@ -1,4 +1,4 @@
-import { useLoaderData } from "react-router";
+import { useLoaderData, useSearchParams } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server.js";
 
@@ -6,11 +6,30 @@ export const loader = async ({ request }) => {
   try {
     const { admin } = await authenticate.admin(request);
     
+    const url = new URL(request.url);
+    const cursor = url.searchParams.get('cursor');
+    const direction = url.searchParams.get('direction') || 'next';
+    
+    // Build the query with cursor for pagination
+    let queryArgs = 'first: 50';
+    if (cursor && direction === 'next') {
+      queryArgs = `first: 50, after: "${cursor}"`;
+    } else if (cursor && direction === 'previous') {
+      queryArgs = `last: 50, before: "${cursor}"`;
+    }
+    
     const response = await admin.graphql(
       `#graphql
         query {
-          orders(first: 50) {
+          orders(${queryArgs}) {
+            pageInfo {
+              hasNextPage
+              hasPreviousPage
+              startCursor
+              endCursor
+            }
             edges {
+              cursor
               node {
                 id
                 name
@@ -52,8 +71,10 @@ export const loader = async ({ request }) => {
     const data = await response.json();
     
     if (data.errors) {
-      return { orders: [], error: data.errors[0].message };
+      return { orders: [], error: data.errors[0].message, pageInfo: {} };
     }
+    
+    const pageInfo = data?.data?.orders?.pageInfo || {};
     
     const allOrders = data?.data?.orders?.edges?.map(({ node }) => ({
       id: node.id,
@@ -88,9 +109,12 @@ export const loader = async ({ request }) => {
       order.lineItems.some(item => item.hasSaddleTag)
     );
     
-    return { orders: saddleOrders };
+    return { 
+      orders: saddleOrders,
+      pageInfo: pageInfo
+    };
   } catch (error) {
-    return { orders: [], error: error.message };
+    return { orders: [], error: error.message, pageInfo: {} };
   }
 };
 
@@ -103,7 +127,6 @@ export const action = async ({ request }) => {
   const orderId = formData.get('orderId');
   
   try {
-    // Update the order with custom attributes for the line item
     const response = await admin.graphql(
       `#graphql
         mutation orderUpdate($input: OrderInput!) {
@@ -146,7 +169,8 @@ export const action = async ({ request }) => {
 };
 
 export default function Index() {
-  const { orders, error } = useLoaderData();
+  const { orders, error, pageInfo } = useLoaderData();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const handleSerialNumberSave = async (orderId, lineItemId, serialNumber) => {
     const formData = new FormData();
@@ -168,6 +192,18 @@ export default function Index() {
     }
   };
 
+  const handleNextPage = () => {
+    if (pageInfo.hasNextPage) {
+      setSearchParams({ cursor: pageInfo.endCursor, direction: 'next' });
+    }
+  };
+
+  const handlePreviousPage = () => {
+    if (pageInfo.hasPreviousPage) {
+      setSearchParams({ cursor: pageInfo.startCursor, direction: 'previous' });
+    }
+  };
+
   return (
     <s-page heading="Saddle Serial Number Manager">
       {error && (
@@ -179,6 +215,42 @@ export default function Index() {
       )}
       
       <s-section heading={`Orders with Saddles (${orders?.length || 0})`}>
+        {/* Pagination Controls - Top */}
+        {(pageInfo.hasNextPage || pageInfo.hasPreviousPage) && (
+          <s-box padding="base" background="surface" borderRadius="base" marginBlockEnd="base">
+            <s-stack direction="inline" gap="tight" alignment="center">
+              <button
+                onClick={handlePreviousPage}
+                disabled={!pageInfo.hasPreviousPage}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: pageInfo.hasPreviousPage ? '#008060' : '#ccc',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: pageInfo.hasPreviousPage ? 'pointer' : 'not-allowed'
+                }}
+              >
+                ← Previous
+              </button>
+              <button
+                onClick={handleNextPage}
+                disabled={!pageInfo.hasNextPage}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: pageInfo.hasNextPage ? '#008060' : '#ccc',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: pageInfo.hasNextPage ? 'pointer' : 'not-allowed'
+                }}
+              >
+                Next →
+              </button>
+            </s-stack>
+          </s-box>
+        )}
+
         {orders && orders.length > 0 ? (
           <s-stack direction="block" gap="base">
             {orders.map((order) => {
@@ -274,6 +346,42 @@ export default function Index() {
           </s-stack>
         ) : (
           <s-paragraph>No orders with saddles found.</s-paragraph>
+        )}
+
+        {/* Pagination Controls - Bottom */}
+        {(pageInfo.hasNextPage || pageInfo.hasPreviousPage) && (
+          <s-box padding="base" background="surface" borderRadius="base" marginBlockStart="base">
+            <s-stack direction="inline" gap="tight" alignment="center">
+              <button
+                onClick={handlePreviousPage}
+                disabled={!pageInfo.hasPreviousPage}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: pageInfo.hasPreviousPage ? '#008060' : '#ccc',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: pageInfo.hasPreviousPage ? 'pointer' : 'not-allowed'
+                }}
+              >
+                ← Previous
+              </button>
+              <button
+                onClick={handleNextPage}
+                disabled={!pageInfo.hasNextPage}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: pageInfo.hasNextPage ? '#008060' : '#ccc',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: pageInfo.hasNextPage ? 'pointer' : 'not-allowed'
+                }}
+              >
+                Next →
+              </button>
+            </s-stack>
+          </s-box>
         )}
       </s-section>
     </s-page>
