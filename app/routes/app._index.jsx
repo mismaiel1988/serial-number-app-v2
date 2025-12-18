@@ -18,10 +18,12 @@ export const loader = async ({ request }) => {
       queryArgs = `last: 50, before: "${cursor}"`;
     }
     
+    console.log('Fetching orders with args:', queryArgs);
+    
     const response = await admin.graphql(
       `#graphql
         query {
-          orders(${queryArgs}) {
+          orders(${queryArgs}, reverse: true) {
             pageInfo {
               hasNextPage
               hasPreviousPage
@@ -71,10 +73,12 @@ export const loader = async ({ request }) => {
     const data = await response.json();
     
     if (data.errors) {
+      console.error('GraphQL errors:', data.errors);
       return { orders: [], error: data.errors[0].message, pageInfo: {} };
     }
     
     const pageInfo = data?.data?.orders?.pageInfo || {};
+    console.log('PageInfo:', pageInfo);
     
     const allOrders = data?.data?.orders?.edges?.map(({ node }) => ({
       id: node.id,
@@ -105,16 +109,22 @@ export const loader = async ({ request }) => {
       }),
     })) || [];
     
+    console.log('Total orders fetched:', allOrders.length);
+    
     const saddleOrders = allOrders.filter(order => 
       order.lineItems.some(item => item.hasSaddleTag)
     );
     
+    console.log('Saddle orders found:', saddleOrders.length);
+    
     return { 
       orders: saddleOrders,
-      pageInfo: pageInfo
+      pageInfo: pageInfo,
+      totalFetched: allOrders.length
     };
   } catch (error) {
-    return { orders: [], error: error.message, pageInfo: {} };
+    console.error('Loader error:', error);
+    return { orders: [], error: error.message, pageInfo: {}, totalFetched: 0 };
   }
 };
 
@@ -169,7 +179,7 @@ export const action = async ({ request }) => {
 };
 
 export default function Index() {
-  const { orders, error, pageInfo } = useLoaderData();
+  const { orders, error, pageInfo, totalFetched } = useLoaderData();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const handleSerialNumberSave = async (orderId, lineItemId, serialNumber) => {
@@ -214,7 +224,7 @@ export default function Index() {
         </s-section>
       )}
       
-      <s-section heading={`Orders with Saddles (${orders?.length || 0})`}>
+      <s-section heading={`Orders with Saddles (${orders?.length || 0} shown, ${totalFetched} total fetched)`}>
         {/* Pagination Controls - Top */}
         {(pageInfo.hasNextPage || pageInfo.hasPreviousPage) && (
           <s-box padding="base" background="surface" borderRadius="base" marginBlockEnd="base">
@@ -233,6 +243,10 @@ export default function Index() {
               >
                 ← Previous
               </button>
+              <s-text variant="bodySm">
+                {pageInfo.hasPreviousPage ? 'More pages available' : ''} 
+                {pageInfo.hasNextPage ? ' | More pages available' : ''}
+              </s-text>
               <button
                 onClick={handleNextPage}
                 disabled={!pageInfo.hasNextPage}
@@ -345,7 +359,7 @@ export default function Index() {
             })}
           </s-stack>
         ) : (
-          <s-paragraph>No orders with saddles found.</s-paragraph>
+          <s-paragraph>No orders with saddles found on this page.</s-paragraph>
         )}
 
         {/* Pagination Controls - Bottom */}
