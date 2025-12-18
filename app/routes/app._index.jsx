@@ -15,7 +15,6 @@ export const loader = async ({ request }) => {
                 id
                 name
                 createdAt
-                displayFulfillmentStatus
                 customer {
                   firstName
                   lastName
@@ -36,6 +35,10 @@ export const loader = async ({ request }) => {
                       product {
                         tags
                       }
+                      customAttributes {
+                        key
+                        value
+                      }
                     }
                   }
                 }
@@ -52,32 +55,35 @@ export const loader = async ({ request }) => {
       return { orders: [], error: data.errors[0].message };
     }
     
-    // Get all orders
     const allOrders = data?.data?.orders?.edges?.map(({ node }) => ({
       id: node.id,
       name: node.name,
       createdAt: node.createdAt,
-      fulfillmentStatus: node.displayFulfillmentStatus,
       customer: {
         name: node.customer 
           ? `${node.customer.firstName || ''} ${node.customer.lastName || ''}`.trim() 
           : 'Guest',
         email: node.customer?.email || '',
       },
-      lineItems: node.lineItems.edges.map(({ node: item }) => ({
-        id: item.id,
-        title: item.title,
-        quantity: item.quantity,
-        tags: item.product?.tags || [],
-        options: (item.variant?.selectedOptions || []).reduce((acc, opt) => {
-          acc[opt.name] = opt.value;
-          return acc;
-        }, {}),
-        hasSaddleTag: (item.product?.tags || []).includes('saddles'),
-      })),
+      lineItems: node.lineItems.edges.map(({ node: item }) => {
+        const customAttributes = item.customAttributes || [];
+        const serialNumber = customAttributes.find(attr => attr.key === 'serial_number')?.value || '';
+        
+        return {
+          id: item.id,
+          title: item.title,
+          quantity: item.quantity,
+          tags: item.product?.tags || [],
+          options: (item.variant?.selectedOptions || []).reduce((acc, opt) => {
+            acc[opt.name] = opt.value;
+            return acc;
+          }, {}),
+          serialNumber: serialNumber,
+          hasSaddleTag: (item.product?.tags || []).includes('saddles'),
+        };
+      }),
     })) || [];
     
-    // Filter to only orders that have at least one product with "saddles" tag
     const saddleOrders = allOrders.filter(order => 
       order.lineItems.some(item => item.hasSaddleTag)
     );
@@ -88,8 +94,79 @@ export const loader = async ({ request }) => {
   }
 };
 
+export const action = async ({ request }) => {
+  const { admin } = await authenticate.admin(request);
+  const formData = await request.formData();
+  
+  const lineItemId = formData.get('lineItemId');
+  const serialNumber = formData.get('serialNumber');
+  const orderId = formData.get('orderId');
+  
+  try {
+    // Update the order with custom attributes for the line item
+    const response = await admin.graphql(
+      `#graphql
+        mutation orderUpdate($input: OrderInput!) {
+          orderUpdate(input: $input) {
+            order {
+              id
+            }
+            userErrors {
+              field
+              message
+            }
+          }
+        }
+      `,
+      {
+        variables: {
+          input: {
+            id: orderId,
+            customAttributes: [
+              {
+                key: `serial_number_${lineItemId.split('/').pop()}`,
+                value: serialNumber
+              }
+            ]
+          }
+        }
+      }
+    );
+    
+    const result = await response.json();
+    
+    if (result.data?.orderUpdate?.userErrors?.length > 0) {
+      return { success: false, error: result.data.orderUpdate.userErrors[0].message };
+    }
+    
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
 export default function Index() {
   const { orders, error } = useLoaderData();
+
+  const handleSerialNumberSave = async (orderId, lineItemId, serialNumber) => {
+    const formData = new FormData();
+    formData.append('orderId', orderId);
+    formData.append('lineItemId', lineItemId);
+    formData.append('serialNumber', serialNumber);
+    
+    const response = await fetch('', {
+      method: 'POST',
+      body: formData,
+    });
+    
+    const result = await response.json();
+    
+    if (result.success) {
+      window.location.reload();
+    } else {
+      alert('Error saving serial number: ' + result.error);
+    }
+  };
 
   return (
     <s-page heading="Saddle Serial Number Manager">
@@ -130,16 +207,12 @@ export default function Index() {
                       Date: {new Date(order.createdAt).toLocaleDateString()}
                     </s-text>
                     
-                    <s-text variant="bodySm">
-                      Fulfillment: {order.fulfillmentStatus}
-                    </s-text>
-                    
                     <s-stack direction="block" gap="tight">
                       <s-text variant="bodySm" fontWeight="semibold">Saddles:</s-text>
                       {saddleItems.map((item) => (
-                        <s-box key={item.id} padding="tight" background="surface" borderRadius="base">
-                          <s-stack direction="block" gap="extraTight">
-                            <s-text variant="bodySm" fontWeight="semibold">
+                        <s-box key={item.id} padding="base" background="surface" borderRadius="base" borderWidth="base">
+                          <s-stack direction="block" gap="tight">
+                            <s-text variant="bodyMd" fontWeight="semibold">
                               {item.title} (Qty: {item.quantity})
                             </s-text>
                             {Object.keys(item.options).length > 0 && (
@@ -150,6 +223,45 @@ export default function Index() {
                                   </s-text>
                                 ))}
                               </s-stack>
+                            )}
+                            
+                            <s-stack direction="inline" gap="tight" alignment="center">
+                              <s-text variant="bodySm" fontWeight="semibold">Serial Number:</s-text>
+                              <input
+                                type="text"
+                                id={`serial-${item.id}`}
+                                defaultValue={item.serialNumber}
+                                placeholder="Enter serial number"
+                                style={{
+                                  padding: '8px',
+                                  border: '1px solid #ccc',
+                                  borderRadius: '4px',
+                                  flex: '1',
+                                  maxWidth: '300px'
+                                }}
+                              />
+                              <button
+                                onClick={() => {
+                                  const input = document.getElementById(`serial-${item.id}`);
+                                  handleSerialNumberSave(order.id, item.id, input.value);
+                                }}
+                                style={{
+                                  padding: '8px 16px',
+                                  backgroundColor: '#008060',
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                Save
+                              </button>
+                            </s-stack>
+                            
+                            {item.serialNumber && (
+                              <s-text variant="bodySm" tone="success">
+                                ✓ Serial number saved: {item.serialNumber}
+                              </s-text>
                             )}
                           </s-stack>
                         </s-box>
