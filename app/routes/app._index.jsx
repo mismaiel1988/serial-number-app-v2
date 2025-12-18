@@ -15,11 +15,25 @@ export const loader = async ({ request }) => {
                 id
                 name
                 createdAt
+                displayFinancialStatus
+                displayFulfillmentStatus
+                customer {
+                  firstName
+                  lastName
+                  email
+                }
+                totalPriceSet {
+                  shopMoney {
+                    amount
+                    currencyCode
+                  }
+                }
                 lineItems(first: 50) {
                   edges {
                     node {
                       id
                       title
+                      quantity
                       product {
                         tags
                       }
@@ -44,9 +58,20 @@ export const loader = async ({ request }) => {
       id: node.id,
       name: node.name,
       createdAt: node.createdAt,
+      financialStatus: node.displayFinancialStatus,
+      fulfillmentStatus: node.displayFulfillmentStatus,
+      customer: {
+        name: node.customer 
+          ? `${node.customer.firstName || ''} ${node.customer.lastName || ''}`.trim() 
+          : 'Guest',
+        email: node.customer?.email || '',
+      },
+      total: node.totalPriceSet?.shopMoney?.amount || '0',
+      currency: node.totalPriceSet?.shopMoney?.currencyCode || 'USD',
       lineItems: node.lineItems.edges.map(({ node: item }) => ({
         id: item.id,
         title: item.title,
+        quantity: item.quantity,
         tags: item.product?.tags || [],
         hasSaddleTag: (item.product?.tags || []).includes('saddles'),
       })),
@@ -79,23 +104,47 @@ export default function Index() {
       <s-section heading={`Orders with Saddles (${orders?.length || 0})`}>
         {orders && orders.length > 0 ? (
           <s-stack direction="block" gap="base">
-            {orders.map((order) => (
-              <s-box
-                key={order.id}
-                padding="base"
-                borderWidth="base"
-                borderRadius="base"
-                background="subdued"
-              >
-                <s-text variant="headingMd">Order {order.name}</s-text>
-                <s-text variant="bodySm">
-                  {new Date(order.createdAt).toLocaleDateString()}
-                </s-text>
-                <s-text variant="bodySm">
-                  Products: {order.lineItems.filter(item => item.hasSaddleTag).map(item => item.title).join(', ')}
-                </s-text>
-              </s-box>
-            ))}
+            {orders.map((order) => {
+              const saddleItems = order.lineItems.filter(item => item.hasSaddleTag);
+              
+              return (
+                <s-box
+                  key={order.id}
+                  padding="base"
+                  borderWidth="base"
+                  borderRadius="base"
+                  background="subdued"
+                >
+                  <s-stack direction="block" gap="tight">
+                    <s-text variant="headingMd">Order {order.name}</s-text>
+                    
+                    <s-text variant="bodyMd" fontWeight="semibold">
+                      Customer: {order.customer.name}
+                    </s-text>
+                    
+                    {order.customer.email && (
+                      <s-text variant="bodySm">{order.customer.email}</s-text>
+                    )}
+                    
+                    <s-text variant="bodySm">
+                      Date: {new Date(order.createdAt).toLocaleDateString()}
+                    </s-text>
+                    
+                    <s-text variant="bodySm">
+                      Total: {order.total} {order.currency}
+                    </s-text>
+                    
+                    <s-text variant="bodySm">
+                      Payment: {order.financialStatus} • Fulfillment: {order.fulfillmentStatus}
+                    </s-text>
+                    
+                    <s-text variant="bodySm" fontWeight="semibold">
+                      Saddles: {saddleItems.map(item => `${item.title} (${item.quantity})`).join(', ')}
+                    </s-text>
+                  </s-stack>
+                </s-box>
+              );
+            })}
           </s-stack>
         ) : (
           <s-paragraph>No orders with saddles found.</s-paragraph>
