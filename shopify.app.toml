@@ -1,10 +1,11 @@
 name = "serial-number-app-v2"
-client_id = "16749a153d22495690ab9a2e891da095"
+client_id = "0e7dcbb18c4397d89c6c36224ea12c67"
 application_url = "https://serial-number-app-v2.onrender.com"
 embedded = true
 
 [access_scopes]
-scopes = "write_products,read_orders,write_order_edits,read_products,read_customers,write_orders"
+scopes = "
+read_orders, write_orders, read_draft_orders, read_customers, write_app_proxy, read_app_proxy, read_products, read_fulfillments, read_assigned_fulfillment_orders, read_metaobjects, write_metaobjects, write_metaobject_definitions, read_metaobject_definitions, write_order_edits, read_order_edits, write_merchant_managed_fulfillment_orders, read_merchant_managed_fulfillment_orders, write_assigned_fulfillment_orders"
 
 [auth]
 redirect_urls = [
