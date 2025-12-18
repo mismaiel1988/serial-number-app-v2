@@ -6,8 +6,6 @@ export const loader = async ({ request }) => {
   try {
     const { admin } = await authenticate.admin(request);
     
-    console.log('Fetching orders...');
-    
     const response = await admin.graphql(
       `#graphql
         query {
@@ -17,6 +15,17 @@ export const loader = async ({ request }) => {
                 id
                 name
                 createdAt
+                lineItems(first: 50) {
+                  edges {
+                    node {
+                      id
+                      title
+                      product {
+                        tags
+                      }
+                    }
+                  }
+                }
               }
             }
           }
@@ -26,22 +35,30 @@ export const loader = async ({ request }) => {
 
     const data = await response.json();
     
-    console.log('Full GraphQL response:', JSON.stringify(data, null, 2));
-    
     if (data.errors) {
-      console.error('GraphQL errors:', data.errors);
       return { orders: [], error: data.errors[0].message };
     }
     
-    const edges = data?.data?.orders?.edges || [];
-    console.log(`Found ${edges.length} order edges`);
+    // Get all orders
+    const allOrders = data?.data?.orders?.edges?.map(({ node }) => ({
+      id: node.id,
+      name: node.name,
+      createdAt: node.createdAt,
+      lineItems: node.lineItems.edges.map(({ node: item }) => ({
+        id: item.id,
+        title: item.title,
+        tags: item.product?.tags || [],
+        hasSaddleTag: (item.product?.tags || []).includes('saddles'),
+      })),
+    })) || [];
     
-    const orders = edges.map(({ node }) => node);
-    console.log(`Mapped to ${orders.length} orders`);
+    // Filter to only orders that have at least one product with "saddles" tag
+    const saddleOrders = allOrders.filter(order => 
+      order.lineItems.some(item => item.hasSaddleTag)
+    );
     
-    return { orders };
+    return { orders: saddleOrders };
   } catch (error) {
-    console.error('Loader error:', error);
     return { orders: [], error: error.message };
   }
 };
@@ -59,7 +76,7 @@ export default function Index() {
         </s-section>
       )}
       
-      <s-section heading={`Orders (${orders?.length || 0})`}>
+      <s-section heading={`Orders with Saddles (${orders?.length || 0})`}>
         {orders && orders.length > 0 ? (
           <s-stack direction="block" gap="base">
             {orders.map((order) => (
@@ -74,11 +91,14 @@ export default function Index() {
                 <s-text variant="bodySm">
                   {new Date(order.createdAt).toLocaleDateString()}
                 </s-text>
+                <s-text variant="bodySm">
+                  Products: {order.lineItems.filter(item => item.hasSaddleTag).map(item => item.title).join(', ')}
+                </s-text>
               </s-box>
             ))}
           </s-stack>
         ) : (
-          <s-paragraph>No orders found.</s-paragraph>
+          <s-paragraph>No orders with saddles found.</s-paragraph>
         )}
       </s-section>
     </s-page>
