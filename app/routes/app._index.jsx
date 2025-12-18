@@ -15,18 +15,11 @@ export const loader = async ({ request }) => {
                 id
                 name
                 createdAt
-                displayFinancialStatus
                 displayFulfillmentStatus
                 customer {
                   firstName
                   lastName
                   email
-                }
-                totalPriceSet {
-                  shopMoney {
-                    amount
-                    currencyCode
-                  }
                 }
                 lineItems(first: 50) {
                   edges {
@@ -34,6 +27,12 @@ export const loader = async ({ request }) => {
                       id
                       title
                       quantity
+                      variant {
+                        selectedOptions {
+                          name
+                          value
+                        }
+                      }
                       product {
                         tags
                       }
@@ -58,7 +57,6 @@ export const loader = async ({ request }) => {
       id: node.id,
       name: node.name,
       createdAt: node.createdAt,
-      financialStatus: node.displayFinancialStatus,
       fulfillmentStatus: node.displayFulfillmentStatus,
       customer: {
         name: node.customer 
@@ -66,13 +64,15 @@ export const loader = async ({ request }) => {
           : 'Guest',
         email: node.customer?.email || '',
       },
-      total: node.totalPriceSet?.shopMoney?.amount || '0',
-      currency: node.totalPriceSet?.shopMoney?.currencyCode || 'USD',
       lineItems: node.lineItems.edges.map(({ node: item }) => ({
         id: item.id,
         title: item.title,
         quantity: item.quantity,
         tags: item.product?.tags || [],
+        options: (item.variant?.selectedOptions || []).reduce((acc, opt) => {
+          acc[opt.name] = opt.value;
+          return acc;
+        }, {}),
         hasSaddleTag: (item.product?.tags || []).includes('saddles'),
       })),
     })) || [];
@@ -131,16 +131,30 @@ export default function Index() {
                     </s-text>
                     
                     <s-text variant="bodySm">
-                      Total: {order.total} {order.currency}
+                      Fulfillment: {order.fulfillmentStatus}
                     </s-text>
                     
-                    <s-text variant="bodySm">
-                      Payment: {order.financialStatus} • Fulfillment: {order.fulfillmentStatus}
-                    </s-text>
-                    
-                    <s-text variant="bodySm" fontWeight="semibold">
-                      Saddles: {saddleItems.map(item => `${item.title} (${item.quantity})`).join(', ')}
-                    </s-text>
+                    <s-stack direction="block" gap="tight">
+                      <s-text variant="bodySm" fontWeight="semibold">Saddles:</s-text>
+                      {saddleItems.map((item) => (
+                        <s-box key={item.id} padding="tight" background="surface" borderRadius="base">
+                          <s-stack direction="block" gap="extraTight">
+                            <s-text variant="bodySm" fontWeight="semibold">
+                              {item.title} (Qty: {item.quantity})
+                            </s-text>
+                            {Object.keys(item.options).length > 0 && (
+                              <s-stack direction="inline" gap="tight">
+                                {Object.entries(item.options).map(([key, value]) => (
+                                  <s-text key={key} variant="bodySm">
+                                    {key}: {value}
+                                  </s-text>
+                                ))}
+                              </s-stack>
+                            )}
+                          </s-stack>
+                        </s-box>
+                      ))}
+                    </s-stack>
                   </s-stack>
                 </s-box>
               );
