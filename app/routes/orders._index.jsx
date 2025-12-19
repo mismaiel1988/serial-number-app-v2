@@ -1,4 +1,4 @@
-import { useLoaderData, Link } from "react-router-dom";
+import { useLoaderData, Link } from "@remix-run/react";
 import OrdersTable from "../components/OrdersTable";
 
 export default function OrdersIndexPage() {
