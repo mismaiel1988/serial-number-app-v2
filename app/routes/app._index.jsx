@@ -264,7 +264,7 @@ export default function App() {
         {orders && orders.length > 0 ? (
           <s-stack direction="block" gap="base">
             {orders.map((order) => {
-              const saddleItems = order.lineItems.filter(item => item.hasSaddleTag);
+              const saddleItems = Array.isArray(order.lineItems) ? order.lineItems.filter(item => item.hasSaddleTag) : [];
               
               return (
                 <s-box key={order.id} padding="base" borderWidth="base" borderRadius="base" background="subdued">
