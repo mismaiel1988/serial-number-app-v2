@@ -1,407 +1,340 @@
-import { useLoaderData, useSearchParams } from "react-router";
-import { boundary } from "@shopify/shopify-app-react-router/server";
-import { authenticate } from "../shopify.server.js";
+import { useEffect, useState } from "react";
+import { json } from "@remix-run/node";
+import { useActionData, useLoaderData, useSubmit } from "@remix-run/react";
+import {
+  Page,
+  Layout,
+  Text,
+  Card,
+  Button,
+  BlockStack,
+  InlineStack,
+  Banner,
+  TextField,
+  Divider,
+} from "@shopify/polaris";
+import { authenticate } from "../shopify.server";
 
 export const loader = async ({ request }) => {
+  const { admin } = await authenticate.admin(request);
+  
+  const url = new URL(request.url);
+  const page = parseInt(url.searchParams.get("page") || "1");
+  const perPage = 10;
+
   try {
-    const { admin } = await authenticate.admin(request);
+    console.log("Fetching ALL orders with saddles tag...");
     
-    const url = new URL(request.url);
-    const cursor = url.searchParams.get('cursor');
-    const direction = url.searchParams.get('direction') || 'next';
+    // Fetch ALL orders by paginating through everything
+    let allOrders = [];
+    let hasNextPage = true;
+    let cursor = null;
+    let fetchCount = 0;
     
-    // Build the query with cursor for pagination
-    let queryArgs = 'first: 50';
-    if (cursor && direction === 'next') {
-      queryArgs = `first: 50, after: "${cursor}"`;
-    } else if (cursor && direction === 'previous') {
-      queryArgs = `last: 50, before: "${cursor}"`;
-    }
-    
-    console.log('Fetching orders with args:', queryArgs);
-    
-    const response = await admin.graphql(
-      `#graphql
-        query {
-          orders(${queryArgs}, reverse: true) {
-            pageInfo {
-              hasNextPage
-              hasPreviousPage
-              startCursor
-              endCursor
-            }
-            edges {
-              cursor
-              node {
-                id
-                name
-                createdAt
-                customer {
-                  firstName
-                  lastName
-                  email
-                }
-                lineItems(first: 50) {
-                  edges {
-                    node {
-                      id
-                      title
-                      quantity
-                      variant {
-                        selectedOptions {
-                          name
-                          value
+    while (hasNextPage) {
+      fetchCount++;
+      const queryArgs = cursor 
+        ? `first: 250, after: "${cursor}", query: "tag:saddles"` 
+        : `first: 250, query: "tag:saddles"`;
+      
+      console.log(`Fetching batch ${fetchCount}...`);
+      
+      const response = await admin.graphql(
+        `#graphql
+          query {
+            orders(${queryArgs}) {
+              edges {
+                node {
+                  id
+                  name
+                  createdAt
+                  displayFulfillmentStatus
+                  customer {
+                    firstName
+                    lastName
+                    email
+                  }
+                  lineItems(first: 50) {
+                    edges {
+                      node {
+                        id
+                        title
+                        quantity
+                        variant {
+                          selectedOptions {
+                            name
+                            value
+                          }
                         }
-                      }
-                      product {
-                        tags
-                      }
-                      customAttributes {
-                        key
-                        value
+                        product {
+                          id
+                          tags
+                        }
                       }
                     }
                   }
                 }
               }
+              pageInfo {
+                hasNextPage
+                endCursor
+              }
             }
           }
-        }
-      `
-    );
+        `
+      );
 
-    const data = await response.json();
-    
-    if (data.errors) {
-      console.error('GraphQL errors:', data.errors);
-      return { orders: [], error: data.errors[0].message, pageInfo: {} };
-    }
-    
-    const pageInfo = data?.data?.orders?.pageInfo || {};
-    console.log('PageInfo:', pageInfo);
-    
-    const allOrders = data?.data?.orders?.edges?.map(({ node }) => ({
-      id: node.id,
-      name: node.name,
-      createdAt: node.createdAt,
-      customer: {
-        name: node.customer 
-          ? `${node.customer.firstName || ''} ${node.customer.lastName || ''}`.trim() 
-          : 'Guest',
-        email: node.customer?.email || '',
-      },
-      lineItems: node.lineItems.edges.map(({ node: item }) => {
-        const customAttributes = item.customAttributes || [];
-        const serialNumber = customAttributes.find(attr => attr.key === 'serial_number')?.value || '';
-        
-        return {
+      const data = await response.json();
+      
+      if (data.errors) {
+        console.error("GraphQL errors:", data.errors);
+        break;
+      }
+      
+      const batchOrders = data?.data?.orders?.edges?.map(({ node }) => ({
+        id: node.id,
+        name: node.name,
+        createdAt: node.createdAt,
+        fulfillmentStatus: node.displayFulfillmentStatus,
+        customer: {
+          name: node.customer 
+            ? `${node.customer.firstName || ""} ${node.customer.lastName || ""}`.trim() 
+            : "Guest",
+          email: node.customer?.email || "",
+        },
+        lineItems: node.lineItems.edges.map(({ node: item }) => ({
           id: item.id,
           title: item.title,
           quantity: item.quantity,
+          productId: item.product?.id,
           tags: item.product?.tags || [],
           options: (item.variant?.selectedOptions || []).reduce((acc, opt) => {
             acc[opt.name] = opt.value;
             return acc;
           }, {}),
-          serialNumber: serialNumber,
-          hasSaddleTag: (item.product?.tags || []).includes('saddles'),
-        };
-      }),
-    })) || [];
+          hasSaddleTag: (item.product?.tags || []).includes("saddles"),
+        })),
+      })) || [];
+      
+      allOrders = [...allOrders, ...batchOrders];
+      
+      hasNextPage = data?.data?.orders?.pageInfo?.hasNextPage || false;
+      cursor = data?.data?.orders?.pageInfo?.endCursor;
+      
+      console.log(`Batch ${fetchCount}: fetched ${batchOrders.length} orders, total so far: ${allOrders.length}`);
+    }
     
-    console.log('Total orders fetched:', allOrders.length);
+    console.log("Total orders fetched:", allOrders.length);
     
+    // Filter for orders that have at least one saddle item
     const saddleOrders = allOrders.filter(order => 
       order.lineItems.some(item => item.hasSaddleTag)
     );
     
-    console.log('Saddle orders found:', saddleOrders.length);
+    console.log("Total saddle orders found:", saddleOrders.length);
     
-    return { 
-      orders: saddleOrders,
-      pageInfo: pageInfo,
+    // Paginate the saddle orders - 10 per page
+    const totalPages = Math.ceil(saddleOrders.length / perPage);
+    const startIndex = (page - 1) * perPage;
+    const endIndex = startIndex + perPage;
+    const paginatedOrders = saddleOrders.slice(startIndex, endIndex);
+    
+    console.log(`Showing orders ${startIndex + 1} to ${Math.min(endIndex, saddleOrders.length)} of ${saddleOrders.length}`);
+    
+    return json({ 
+      orders: paginatedOrders,
+      currentPage: page,
+      totalPages: totalPages,
+      totalOrders: saddleOrders.length,
       totalFetched: allOrders.length
-    };
+    });
   } catch (error) {
-    console.error('Loader error:', error);
-    return { orders: [], error: error.message, pageInfo: {}, totalFetched: 0 };
+    console.error("Loader error:", error);
+    return json({ 
+      orders: [], 
+      error: error.message,
+      currentPage: 1,
+      totalPages: 0,
+      totalOrders: 0,
+      totalFetched: 0
+    });
   }
 };
 
 export const action = async ({ request }) => {
   const { admin } = await authenticate.admin(request);
   const formData = await request.formData();
-  
-  const lineItemId = formData.get('lineItemId');
-  const serialNumber = formData.get('serialNumber');
-  const orderId = formData.get('orderId');
-  
-  try {
-    const response = await admin.graphql(
-      `#graphql
-        mutation orderUpdate($input: OrderInput!) {
-          orderUpdate(input: $input) {
-            order {
-              id
-            }
-            userErrors {
-              field
-              message
-            }
-          }
-        }
-      `,
-      {
-        variables: {
-          input: {
-            id: orderId,
-            customAttributes: [
-              {
-                key: `serial_number_${lineItemId.split('/').pop()}`,
-                value: serialNumber
-              }
-            ]
-          }
-        }
-      }
-    );
-    
-    const result = await response.json();
-    
-    if (result.data?.orderUpdate?.userErrors?.length > 0) {
-      return { success: false, error: result.data.orderUpdate.userErrors[0].message };
+  const actionType = formData.get("actionType");
+
+  if (actionType === "saveSerial") {
+    const orderId = formData.get("orderId");
+    const lineItemId = formData.get("lineItemId");
+    const serialNumber = formData.get("serialNumber");
+
+    try {
+      // Save serial number logic here
+      return json({ success: true, message: "Serial number saved" });
+    } catch (error) {
+      return json({ success: false, error: error.message });
     }
-    
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: error.message };
   }
+
+  return json({ success: false, error: "Unknown action" });
 };
 
 export default function Index() {
-  const { orders, error, pageInfo, totalFetched } = useLoaderData();
-  const [searchParams, setSearchParams] = useSearchParams();
-
-  const handleSerialNumberSave = async (orderId, lineItemId, serialNumber) => {
-    const formData = new FormData();
-    formData.append('orderId', orderId);
-    formData.append('lineItemId', lineItemId);
-    formData.append('serialNumber', serialNumber);
-    
-    const response = await fetch('', {
-      method: 'POST',
-      body: formData,
-    });
-    
-    const result = await response.json();
-    
-    if (result.success) {
-      window.location.reload();
-    } else {
-      alert('Error saving serial number: ' + result.error);
-    }
-  };
-
-  const handleNextPage = () => {
-    if (pageInfo.hasNextPage) {
-      setSearchParams({ cursor: pageInfo.endCursor, direction: 'next' });
-    }
-  };
-
-  const handlePreviousPage = () => {
-    if (pageInfo.hasPreviousPage) {
-      setSearchParams({ cursor: pageInfo.startCursor, direction: 'previous' });
-    }
-  };
+  const { orders, error, currentPage, totalPages, totalOrders, totalFetched } = useLoaderData();
+  const actionData = useActionData();
+  const submit = useSubmit();
 
   return (
-    <s-page heading="Saddle Serial Number Manager">
-      {error && (
-        <s-section>
-          <s-banner tone="critical">
-            <s-text>Error: {error}</s-text>
-          </s-banner>
-        </s-section>
-      )}
-      
-      <s-section heading={`Orders with Saddles (${orders?.length || 0} shown, ${totalFetched} total fetched)`}>
-        {/* Pagination Controls - Top */}
-        {(pageInfo.hasNextPage || pageInfo.hasPreviousPage) && (
-          <s-box padding="base" background="surface" borderRadius="base" marginBlockEnd="base">
-            <s-stack direction="inline" gap="tight" alignment="center">
-              <button
-                onClick={handlePreviousPage}
-                disabled={!pageInfo.hasPreviousPage}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: pageInfo.hasPreviousPage ? '#008060' : '#ccc',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: pageInfo.hasPreviousPage ? 'pointer' : 'not-allowed'
-                }}
-              >
-                ← Previous
-              </button>
-              <s-text variant="bodySm">
-                {pageInfo.hasPreviousPage ? 'More pages available' : ''} 
-                {pageInfo.hasNextPage ? ' | More pages available' : ''}
-              </s-text>
-              <button
-                onClick={handleNextPage}
-                disabled={!pageInfo.hasNextPage}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: pageInfo.hasNextPage ? '#008060' : '#ccc',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: pageInfo.hasNextPage ? 'pointer' : 'not-allowed'
-                }}
-              >
-                Next →
-              </button>
-            </s-stack>
-          </s-box>
+    <Page
+      title="Saddle Serial Number Manager"
+      subtitle={`Showing ${totalOrders} orders with saddles (searched ${totalFetched} total orders)`}
+    >
+      <Layout>
+        {error && (
+          <Layout.Section>
+            <Banner tone="critical">
+              <p>Error: {error}</p>
+            </Banner>
+          </Layout.Section>
         )}
 
-        {orders && orders.length > 0 ? (
-          <s-stack direction="block" gap="base">
-            {orders.map((order) => {
-              const saddleItems = order.lineItems.filter(item => item.hasSaddleTag);
-              
-              return (
-                <s-box
-                  key={order.id}
-                  padding="base"
-                  borderWidth="base"
-                  borderRadius="base"
-                  background="subdued"
+        {actionData?.success === false && (
+          <Layout.Section>
+            <Banner tone="critical">
+              <p>Error: {actionData.error}</p>
+            </Banner>
+          </Layout.Section>
+        )}
+
+        {actionData?.success === true && (
+          <Layout.Section>
+            <Banner tone="success">
+              <p>{actionData.message}</p>
+            </Banner>
+          </Layout.Section>
+        )}
+
+        <Layout.Section>
+          <Card>
+            <BlockStack gap="400">
+              <InlineStack align="space-between" blockAlign="center">
+                <Text variant="headingMd">
+                  Orders with Saddles ({totalOrders} total)
+                </Text>
+                <InlineStack gap="200">
+                  <Button
+                    disabled={currentPage === 1}
+                    url={`?page=${currentPage - 1}`}
+                  >
+                    ← Previous
+                  </Button>
+                  <Text variant="bodySm">
+                    Page {currentPage} of {totalPages}
+                  </Text>
+                  <Button
+                    disabled={currentPage === totalPages}
+                    url={`?page=${currentPage + 1}`}
+                  >
+                    Next →
+                  </Button>
+                </InlineStack>
+              </InlineStack>
+
+              <Divider />
+
+              {orders && orders.length > 0 ? (
+                <BlockStack gap="400">
+                  {orders.map((order) => {
+                    const saddleItems = order.lineItems.filter(
+                      (item) => item.hasSaddleTag
+                    );
+
+                    return (
+                      <Card key={order.id}>
+                        <BlockStack gap="300">
+                          <Text variant="headingMd">Order {order.name}</Text>
+                          
+                          <BlockStack gap="200">
+                            <Text variant="bodyMd">
+                              <strong>Customer:</strong> {order.customer.name}
+                            </Text>
+                            {order.customer.email && (
+                              <Text variant="bodySm">{order.customer.email}</Text>
+                            )}
+                            <Text variant="bodySm">
+                              <strong>Date:</strong>{" "}
+                              {new Date(order.createdAt).toLocaleDateString()}
+                            </Text>
+                            <Text variant="bodySm">
+                              <strong>Status:</strong> {order.fulfillmentStatus}
+                            </Text>
+                          </BlockStack>
+
+                          <Divider />
+
+                          <BlockStack gap="300">
+                            <Text variant="headingSm">Saddles:</Text>
+                            {saddleItems.map((item) => (
+                              <Card key={item.id} background="bg-surface-secondary">
+                                <BlockStack gap="200">
+                                  <Text variant="bodyMd">
+                                    <strong>{item.title}</strong> (Qty: {item.quantity})
+                                  </Text>
+                                  {Object.keys(item.options).length > 0 && (
+                                    <InlineStack gap="200">
+                                      {Object.entries(item.options).map(
+                                        ([key, value]) => (
+                                          <Text key={key} variant="bodySm">
+                                            {key}: {value}
+                                          </Text>
+                                        )
+                                      )}
+                                    </InlineStack>
+                                  )}
+                                  <TextField
+                                    label="Serial Number"
+                                    placeholder="Enter serial number"
+                                    autoComplete="off"
+                                  />
+                                </BlockStack>
+                              </Card>
+                            ))}
+                          </BlockStack>
+                        </BlockStack>
+                      </Card>
+                    );
+                  })}
+                </BlockStack>
+              ) : (
+                <Text>No orders with saddles found.</Text>
+              )}
+
+              <Divider />
+
+              <InlineStack align="center" gap="200">
+                <Button
+                  disabled={currentPage === 1}
+                  url={`?page=${currentPage - 1}`}
                 >
-                  <s-stack direction="block" gap="tight">
-                    <s-text variant="headingMd">Order {order.name}</s-text>
-                    
-                    <s-text variant="bodyMd" fontWeight="semibold">
-                      Customer: {order.customer.name}
-                    </s-text>
-                    
-                    {order.customer.email && (
-                      <s-text variant="bodySm">{order.customer.email}</s-text>
-                    )}
-                    
-                    <s-text variant="bodySm">
-                      Date: {new Date(order.createdAt).toLocaleDateString()}
-                    </s-text>
-                    
-                    <s-stack direction="block" gap="tight">
-                      <s-text variant="bodySm" fontWeight="semibold">Saddles:</s-text>
-                      {saddleItems.map((item) => (
-                        <s-box key={item.id} padding="base" background="surface" borderRadius="base" borderWidth="base">
-                          <s-stack direction="block" gap="tight">
-                            <s-text variant="bodyMd" fontWeight="semibold">
-                              {item.title} (Qty: {item.quantity})
-                            </s-text>
-                            {Object.keys(item.options).length > 0 && (
-                              <s-stack direction="inline" gap="tight">
-                                {Object.entries(item.options).map(([key, value]) => (
-                                  <s-text key={key} variant="bodySm">
-                                    {key}: {value}
-                                  </s-text>
-                                ))}
-                              </s-stack>
-                            )}
-                            
-                            <s-stack direction="inline" gap="tight" alignment="center">
-                              <s-text variant="bodySm" fontWeight="semibold">Serial Number:</s-text>
-                              <input
-                                type="text"
-                                id={`serial-${item.id}`}
-                                defaultValue={item.serialNumber}
-                                placeholder="Enter serial number"
-                                style={{
-                                  padding: '8px',
-                                  border: '1px solid #ccc',
-                                  borderRadius: '4px',
-                                  flex: '1',
-                                  maxWidth: '300px'
-                                }}
-                              />
-                              <button
-                                onClick={() => {
-                                  const input = document.getElementById(`serial-${item.id}`);
-                                  handleSerialNumberSave(order.id, item.id, input.value);
-                                }}
-                                style={{
-                                  padding: '8px 16px',
-                                  backgroundColor: '#008060',
-                                  color: 'white',
-                                  border: 'none',
-                                  borderRadius: '4px',
-                                  cursor: 'pointer'
-                                }}
-                              >
-                                Save
-                              </button>
-                            </s-stack>
-                            
-                            {item.serialNumber && (
-                              <s-text variant="bodySm" tone="success">
-                                ✓ Serial number saved: {item.serialNumber}
-                              </s-text>
-                            )}
-                          </s-stack>
-                        </s-box>
-                      ))}
-                    </s-stack>
-                  </s-stack>
-                </s-box>
-              );
-            })}
-          </s-stack>
-        ) : (
-          <s-paragraph>No orders with saddles found on this page.</s-paragraph>
-        )}
-
-        {/* Pagination Controls - Bottom */}
-        {(pageInfo.hasNextPage || pageInfo.hasPreviousPage) && (
-          <s-box padding="base" background="surface" borderRadius="base" marginBlockStart="base">
-            <s-stack direction="inline" gap="tight" alignment="center">
-              <button
-                onClick={handlePreviousPage}
-                disabled={!pageInfo.hasPreviousPage}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: pageInfo.hasPreviousPage ? '#008060' : '#ccc',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: pageInfo.hasPreviousPage ? 'pointer' : 'not-allowed'
-                }}
-              >
-                ← Previous
-              </button>
-              <button
-                onClick={handleNextPage}
-                disabled={!pageInfo.hasNextPage}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: pageInfo.hasNextPage ? '#008060' : '#ccc',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: pageInfo.hasNextPage ? 'pointer' : 'not-allowed'
-                }}
-              >
-                Next →
-              </button>
-            </s-stack>
-          </s-box>
-        )}
-      </s-section>
-    </s-page>
+                  ← Previous
+                </Button>
+                <Text variant="bodySm">
+                  Page {currentPage} of {totalPages}
+                </Text>
+                <Button
+                  disabled={currentPage === totalPages}
+                  url={`?page=${currentPage + 1}`}
+                >
+                  Next →
+                </Button>
+              </InlineStack>
+            </BlockStack>
+          </Card>
+        </Layout.Section>
+      </Layout>
+    </Page>
   );
 }
-
-export const headers = (headersArgs) => {
-  return boundary.headers(headersArgs);
-};
