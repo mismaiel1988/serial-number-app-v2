@@ -1,18 +1,10 @@
-# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
-
+name = "serial-number-app-v2"
 client_id = "80f6bda70f68d9493dd520a62584696e"
-name = "Serial Number App V2"
 application_url = "https://serial-number-app-v2.onrender.com"
 embedded = true
 
-[webhooks]
-api_version = "2025-10"
-
 [access_scopes]
-# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_app_proxy,write_app_proxy,read_assigned_fulfillment_orders,write_assigned_fulfillment_orders,read_customers,read_draft_orders,read_fulfillments,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_metaobject_definitions,write_metaobject_definitions,read_metaobjects,write_metaobjects,write_order_edits,read_order_edits,read_orders,write_orders,read_products"
-optional_scopes = [ ]
-use_legacy_install_flow = false
+scopes = "read_orders, write_orders, read_draft_orders, read_customers, write_app_proxy, read_app_proxy, read_products, read_fulfillments, read_assigned_fulfillment_orders, read_metaobjects, write_metaobjects, write_metaobject_definitions, read_metaobject_definitions, write_order_edits, read_order_edits, write_merchant_managed_fulfillment_orders, read_merchant_managed_fulfillment_orders, write_assigned_fulfillment_orders"
 
 [auth]
 redirect_urls = [
@@ -21,5 +13,5 @@ redirect_urls = [
   "https://serial-number-app-v2.onrender.com/api/auth/callback"
 ]
 
-[build]
-automatically_update_urls_on_dev = false
+[webhooks]
+api_version = "2025-10"

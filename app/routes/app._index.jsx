@@ -12,21 +12,26 @@ export const loader = async ({ request }) => {
     const perPage = 10;
 
     // Get total count from database
-    const totalOrders = await db.saddle_orders.count();
+    const totalOrders = await db.saddleOrder.count();
+    
     // Get paginated orders from database
-    const orders = await db.saddle_orders.findMany({
+    const orders = await db.saddleOrder.findMany({
       skip: (page - 1) * perPage,
       take: perPage,
       orderBy: {
-        created_at: 'desc'
+        createdAt: 'desc'
       }
     });
+    
     const totalPages = Math.ceil(totalOrders / perPage);
+    
     console.log(`Showing ${orders.length} orders from database (page ${page} of ${totalPages})`);
-    return {
+    
+    return { 
       orders: orders.map(order => ({
         ...order,
-        serialNumbers: order.serial_numbers ? JSON.parse(order.serial_numbers) : [],
+        lineItems: JSON.parse(order.lineItems),
+        customer: JSON.parse(order.customer)
       })),
       currentPage: page,
       totalPages: totalPages,
@@ -56,7 +61,7 @@ export const action = async ({ request }) => {
       console.log("Starting sync of all saddle orders...");
       
       // Clear existing orders
-      await db.saddle_orders.deleteMany({});
+      await db.saddleOrder.deleteMany({});
       console.log("Cleared existing orders from database");
       
       // Fetch ALL orders from Shopify
@@ -170,7 +175,7 @@ export const action = async ({ request }) => {
       
       // Save all orders to database
       if (allOrders.length > 0) {
-        await db.saddle_orders.createMany({
+        await db.saddleOrder.createMany({
           data: allOrders
         });
         console.log(`Saved ${allOrders.length} orders to database`);
@@ -193,26 +198,27 @@ export const action = async ({ request }) => {
     const serialNumber = formData.get("serialNumber");
 
     try {
-      const order = await db.saddle_orders.findUnique({
-        where: { db_id: parseInt(orderId) }
+      const order = await db.saddleOrder.findUnique({
+        where: { id: parseInt(orderId) }
       });
+      
       if (order) {
-        let serialNumbers = order.serial_numbers ? JSON.parse(order.serial_numbers) : [];
-        // If serialNumbers is not an array, make it one
-        if (!Array.isArray(serialNumbers)) serialNumbers = [];
-        // Add or update serial for this line item
-        const idx = serialNumbers.findIndex(sn => sn.lineItemId === lineItemId);
-        if (idx > -1) {
-          serialNumbers[idx].serialNumber = serialNumber;
-        } else {
-          serialNumbers.push({ lineItemId, serialNumber });
-        }
-        await db.saddle_orders.update({
-          where: { db_id: parseInt(orderId) },
-          data: { serial_numbers: JSON.stringify(serialNumbers) }
+        const lineItems = JSON.parse(order.lineItems);
+        const updatedLineItems = lineItems.map(item => {
+          if (item.id === lineItemId) {
+            return { ...item, serialNumber };
+          }
+          return item;
         });
+        
+        await db.saddleOrder.update({
+          where: { id: parseInt(orderId) },
+          data: { lineItems: JSON.stringify(updatedLineItems) }
+        });
+        
         return { success: true, message: "Serial number saved" };
       }
+      
       return { success: false, error: "Order not found" };
     } catch (error) {
       return { success: false, error: error.message };
@@ -264,7 +270,7 @@ export default function App() {
         {orders && orders.length > 0 ? (
           <s-stack direction="block" gap="base">
             {orders.map((order) => {
-              const saddleItems = Array.isArray(order.lineItems) ? order.lineItems.filter(item => item.hasSaddleTag) : [];
+              const saddleItems = order.lineItems.filter(item => item.hasSaddleTag);
               
               return (
                 <s-box key={order.id} padding="base" borderWidth="base" borderRadius="base" background="subdued">
