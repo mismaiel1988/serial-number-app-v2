@@ -97,3 +97,12 @@ model SerialNumber {
 
   createdAt       DateTime @default(now())
 }
+model SaddleOrder {
+  id             String   @id @default(cuid())
+  shopifyOrderId String   @unique
+  orderName      String
+  createdAt      DateTime @default(now())
+  fulfillmentStatus String
+  customer       String   // JSON string
+  lineItems      String   // JSON string
+}

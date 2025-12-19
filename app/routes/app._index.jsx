@@ -6,47 +6,59 @@ import db from "../db.server";
 export const loader = async ({ request }) => {
   try {
     const { admin } = await authenticate.admin(request);
-    
+
     const url = new URL(request.url);
     const page = parseInt(url.searchParams.get('page') || '1');
     const perPage = 10;
 
-    // Get total count from database
-    const totalOrders = await db.saddleOrder.count();
-    
-    // Get paginated orders from database
-    const orders = await db.saddleOrder.findMany({
-      skip: (page - 1) * perPage,
-      take: perPage,
-      orderBy: {
-        createdAt: 'desc'
-      }
-    });
-    
+    // Get total count from database with error handling
+    let totalOrders = 0;
+    try {
+      totalOrders = await db.saddleOrders.count(); // Updated model name
+    } catch (error) {
+      console.error("Error fetching total order count:", error);
+      totalOrders = 0; // Default to 0 if count fails
+    }
+
+    // Get paginated orders from database with error handling
+    let orders = [];
+    try {
+      orders = await db.saddleOrders.findMany({ // Updated model name
+        skip: (page - 1) * perPage,
+        take: perPage,
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+    } catch (error) {
+      console.error("Error fetching orders:", error);
+      orders = []; // Default to empty array if fetching fails
+    }
+
     const totalPages = Math.ceil(totalOrders / perPage);
-    
+
     console.log(`Showing ${orders.length} orders from database (page ${page} of ${totalPages})`);
-    
-    return { 
-      orders: orders.map(order => ({
+
+    return {
+      orders: orders.map((order) => ({
         ...order,
         lineItems: JSON.parse(order.lineItems),
-        customer: JSON.parse(order.customer)
+        customer: JSON.parse(order.customer),
       })),
       currentPage: page,
       totalPages: totalPages,
       totalOrders: totalOrders,
-      fromDatabase: true
+      fromDatabase: true,
     };
   } catch (error) {
     console.error("Loader error:", error);
-    return { 
-      orders: [], 
+    return {
+      orders: [],
       error: error.message,
       currentPage: 1,
       totalPages: 0,
       totalOrders: 0,
-      fromDatabase: false
+      fromDatabase: false,
     };
   }
 };
