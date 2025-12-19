@@ -255,8 +255,8 @@ export default function App() {
                 <s-box key={order.id} padding="base" borderWidth="base" borderRadius="base" background="subdued">
                   <s-stack direction="block" gap="tight">
                     <s-text variant="headingMd">Order {order.orderName}</s-text>
-                    <s-text variant="bodyMd" fontWeight="semibold">Customer: {order.customer.name}</s-text>
-                    {order.customer.email && <s-text variant="bodySm">{order.customer.email}</s-text>}
+                    <s-text variant="bodyMd" fontWeight="semibold">Customer: {order.customer_name}</s-text>
+                    {order.customer_email && <s-text variant="bodySm">{order.customer_email}</s-text>}
                     <s-text variant="bodySm">Date: {new Date(order.createdAt).toLocaleDateString()}</s-text>
                     
                     <s-stack direction="block" gap="tight">
