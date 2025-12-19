@@ -1,3 +1,20 @@
+model saddle_orders {
+  db_id         Int     @id @default(autoincrement())
+  id            String? @unique
+
+  order_name     String?
+  order_id       String?
+  customer_name  String?
+  customer_email String?
+  created_at     DateTime?
+  line_item_id   String?
+  product_title  String?
+  product_sku    String?
+  product_options String?
+  quantity       Int?
+  serial_numbers String?   // JSON array as string
+  last_synced    DateTime?
+}
 // ===============================
 // Prisma Client
 // ===============================
