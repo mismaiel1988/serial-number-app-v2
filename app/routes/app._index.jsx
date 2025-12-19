@@ -6,32 +6,26 @@ import db from "../db.server";
 export const loader = async ({ request }) => {
   try {
     const { admin } = await authenticate.admin(request);
-    
     const url = new URL(request.url);
     const page = parseInt(url.searchParams.get('page') || '1');
     const perPage = 10;
 
     // Get total count from database
-    const totalOrders = await db.saddleOrder.count();
-    
+    const totalOrders = await db.saddle_orders.count();
     // Get paginated orders from database
-    const orders = await db.saddleOrder.findMany({
+    const orders = await db.saddle_orders.findMany({
       skip: (page - 1) * perPage,
       take: perPage,
       orderBy: {
-        createdAt: 'desc'
+        created_at: 'desc'
       }
     });
-    
     const totalPages = Math.ceil(totalOrders / perPage);
-    
     console.log(`Showing ${orders.length} orders from database (page ${page} of ${totalPages})`);
-    
-    return { 
+    return {
       orders: orders.map(order => ({
         ...order,
-        lineItems: JSON.parse(order.lineItems),
-        customer: JSON.parse(order.customer)
+        serialNumbers: order.serial_numbers ? JSON.parse(order.serial_numbers) : [],
       })),
       currentPage: page,
       totalPages: totalPages,
@@ -40,8 +34,8 @@ export const loader = async ({ request }) => {
     };
   } catch (error) {
     console.error("Loader error:", error);
-    return { 
-      orders: [], 
+    return {
+      orders: [],
       error: error.message,
       currentPage: 1,
       totalPages: 0,
@@ -56,28 +50,24 @@ export const action = async ({ request }) => {
   const formData = await request.formData();
   const actionType = formData.get("actionType");
 
+
   if (actionType === "syncOrders") {
     try {
       console.log("Starting sync of all saddle orders...");
-      
       // Clear existing orders
-      await db.saddleOrder.deleteMany({});
+      await db.saddle_orders.deleteMany({});
       console.log("Cleared existing orders from database");
-      
       // Fetch ALL orders from Shopify
       let allOrders = [];
       let hasNextPage = true;
       let cursor = null;
       let fetchCount = 0;
-      
       while (hasNextPage) {
         fetchCount++;
-        const queryArgs = cursor 
-          ? `first: 250, after: "${cursor}", query: "tag:saddles"` 
+        const queryArgs = cursor
+          ? `first: 250, after: "${cursor}", query: "tag:saddles"`
           : `first: 250, query: "tag:saddles"`;
-        
         console.log(`Fetching batch ${fetchCount}...`);
-        
         const response = await admin.graphql(
           `#graphql
             query {
@@ -122,26 +112,26 @@ export const action = async ({ request }) => {
             }
           `
         );
-
         const data = await response.json();
-        
         if (data.errors) {
           console.error("GraphQL errors:", data.errors);
           break;
         }
-        
         const batchOrders = data?.data?.orders?.edges?.map(({ node }) => ({
-          shopifyOrderId: node.id,
-          orderName: node.name,
-          createdAt: new Date(node.createdAt),
-          fulfillmentStatus: node.displayFulfillmentStatus,
-          customer: JSON.stringify({
-            name: node.customer 
-              ? `${node.customer.firstName || ""} ${node.customer.lastName || ""}`.trim() 
-              : "Guest",
-            email: node.customer?.email || "",
-          }),
-          lineItems: JSON.stringify(
+          order_id: node.id,
+          order_name: node.name,
+          created_at: new Date(node.createdAt),
+          customer_name: node.customer ? `${node.customer.firstName || ""} ${node.customer.lastName || ""}`.trim() : "Guest",
+          customer_email: node.customer?.email || "",
+          line_item_id: null, // Not used in this context
+          product_title: null, // Not used in this context
+          product_sku: null, // Not used in this context
+          product_options: null, // Not used in this context
+          quantity: null, // Not used in this context
+          serial_numbers: null, // Will be set later
+          last_synced: new Date(),
+          // Add more fields as needed
+          serial_numbers: JSON.stringify(
             node.lineItems.edges.map(({ node: item }) => ({
               id: item.id,
               title: item.title,
@@ -156,33 +146,26 @@ export const action = async ({ request }) => {
             }))
           ),
         })) || [];
-        
         // Filter for orders with saddle items
         const saddleOrders = batchOrders.filter(order => {
-          const items = JSON.parse(order.lineItems);
+          const items = order.serial_numbers ? JSON.parse(order.serial_numbers) : [];
           return items.some(item => item.hasSaddleTag);
         });
-        
         allOrders = [...allOrders, ...saddleOrders];
-        
         hasNextPage = data?.data?.orders?.pageInfo?.hasNextPage || false;
         cursor = data?.data?.orders?.pageInfo?.endCursor;
-        
         console.log(`Batch ${fetchCount}: found ${saddleOrders.length} saddle orders, total so far: ${allOrders.length}`);
       }
-      
       console.log(`Total saddle orders to save: ${allOrders.length}`);
-      
       // Save all orders to database
       if (allOrders.length > 0) {
-        await db.saddleOrder.createMany({
+        await db.saddle_orders.createMany({
           data: allOrders
         });
         console.log(`Saved ${allOrders.length} orders to database`);
       }
-      
-      return { 
-        success: true, 
+      return {
+        success: true,
         message: `Successfully synced ${allOrders.length} saddle orders from Shopify`,
         orderCount: allOrders.length
       };
@@ -196,29 +179,25 @@ export const action = async ({ request }) => {
     const orderId = formData.get("orderId");
     const lineItemId = formData.get("lineItemId");
     const serialNumber = formData.get("serialNumber");
-
     try {
-      const order = await db.saddleOrder.findUnique({
-        where: { id: parseInt(orderId) }
+      const order = await db.saddle_orders.findUnique({
+        where: { db_id: parseInt(orderId) }
       });
-      
       if (order) {
-        const lineItems = JSON.parse(order.lineItems);
-        const updatedLineItems = lineItems.map(item => {
-          if (item.id === lineItemId) {
-            return { ...item, serialNumber };
-          }
-          return item;
+        let serialNumbers = order.serial_numbers ? JSON.parse(order.serial_numbers) : [];
+        if (!Array.isArray(serialNumbers)) serialNumbers = [];
+        const idx = serialNumbers.findIndex(sn => sn.lineItemId === lineItemId);
+        if (idx > -1) {
+          serialNumbers[idx].serialNumber = serialNumber;
+        } else {
+          serialNumbers.push({ lineItemId, serialNumber });
+        }
+        await db.saddle_orders.update({
+          where: { db_id: parseInt(orderId) },
+          data: { serial_numbers: JSON.stringify(serialNumbers) }
         });
-        
-        await db.saddleOrder.update({
-          where: { id: parseInt(orderId) },
-          data: { lineItems: JSON.stringify(updatedLineItems) }
-        });
-        
         return { success: true, message: "Serial number saved" };
       }
-      
       return { success: false, error: "Order not found" };
     } catch (error) {
       return { success: false, error: error.message };
@@ -270,7 +249,7 @@ export default function App() {
         {orders && orders.length > 0 ? (
           <s-stack direction="block" gap="base">
             {orders.map((order) => {
-              const saddleItems = order.lineItems.filter(item => item.hasSaddleTag);
+              const saddleItems = Array.isArray(order.serialNumbers) ? order.serialNumbers.filter(item => item.hasSaddleTag) : [];
               
               return (
                 <s-box key={order.id} padding="base" borderWidth="base" borderRadius="base" background="subdued">
