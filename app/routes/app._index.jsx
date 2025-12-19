@@ -1,29 +1,16 @@
-import { useEffect, useState } from "react";
-import { json } from "@remix-run/node";
-import { useActionData, useLoaderData, useSubmit } from "@remix-run/react";
-import {
-  Page,
-  Layout,
-  Text,
-  Card,
-  Button,
-  BlockStack,
-  InlineStack,
-  Banner,
-  TextField,
-  Divider,
-} from "@shopify/polaris";
-import { authenticate } from "../shopify.server";
+import { useLoaderData, useSearchParams } from "react-router";
+import { boundary } from "@shopify/shopify-app-react-router/server";
+import { authenticate } from "../shopify.server.js";
 import db from "../db.server";
 
 export const loader = async ({ request }) => {
-  const { admin } = await authenticate.admin(request);
-  
-  const url = new URL(request.url);
-  const page = parseInt(url.searchParams.get("page") || "1");
-  const perPage = 10;
-
   try {
+    const { admin } = await authenticate.admin(request);
+    
+    const url = new URL(request.url);
+    const page = parseInt(url.searchParams.get('page') || '1');
+    const perPage = 10;
+
     // Get total count from database
     const totalOrders = await db.saddleOrder.count();
     
@@ -40,7 +27,7 @@ export const loader = async ({ request }) => {
     
     console.log(`Showing ${orders.length} orders from database (page ${page} of ${totalPages})`);
     
-    return json({ 
+    return { 
       orders: orders.map(order => ({
         ...order,
         lineItems: JSON.parse(order.lineItems),
@@ -50,17 +37,17 @@ export const loader = async ({ request }) => {
       totalPages: totalPages,
       totalOrders: totalOrders,
       fromDatabase: true
-    });
+    };
   } catch (error) {
     console.error("Loader error:", error);
-    return json({ 
+    return { 
       orders: [], 
       error: error.message,
       currentPage: 1,
       totalPages: 0,
       totalOrders: 0,
       fromDatabase: false
-    });
+    };
   }
 };
 
@@ -194,14 +181,14 @@ export const action = async ({ request }) => {
         console.log(`Saved ${allOrders.length} orders to database`);
       }
       
-      return json({ 
+      return { 
         success: true, 
         message: `Successfully synced ${allOrders.length} saddle orders from Shopify`,
         orderCount: allOrders.length
-      });
+      };
     } catch (error) {
       console.error("Sync error:", error);
-      return json({ success: false, error: error.message });
+      return { success: false, error: error.message };
     }
   }
 
@@ -211,7 +198,6 @@ export const action = async ({ request }) => {
     const serialNumber = formData.get("serialNumber");
 
     try {
-      // Update serial number in database
       const order = await db.saddleOrder.findUnique({
         where: { id: parseInt(orderId) }
       });
@@ -230,212 +216,117 @@ export const action = async ({ request }) => {
           data: { lineItems: JSON.stringify(updatedLineItems) }
         });
         
-        return json({ success: true, message: "Serial number saved" });
+        return { success: true, message: "Serial number saved" };
       }
       
-      return json({ success: false, error: "Order not found" });
+      return { success: false, error: "Order not found" };
     } catch (error) {
-      return json({ success: false, error: error.message });
+      return { success: false, error: error.message };
     }
   }
 
-  return json({ success: false, error: "Unknown action" });
+  return { success: false, error: "Unknown action" };
 };
 
-export default function Index() {
+export default function App() {
   const { orders, error, currentPage, totalPages, totalOrders, fromDatabase } = useLoaderData();
-  const actionData = useActionData();
-  const submit = useSubmit();
-  const [isSyncing, setIsSyncing] = useState(false);
-
-  const handleSync = () => {
-    setIsSyncing(true);
-    const formData = new FormData();
-    formData.append("actionType", "syncOrders");
-    submit(formData, { method: "post" });
-  };
-
-  useEffect(() => {
-    if (actionData) {
-      setIsSyncing(false);
-    }
-  }, [actionData]);
 
   return (
-    <Page
-      title="Saddle Serial Number Manager"
-      subtitle={fromDatabase ? `${totalOrders} orders in database` : "No orders synced yet"}
-      primaryAction={{
-        content: isSyncing ? "Syncing..." : "Sync Orders from Shopify",
-        onAction: handleSync,
-        loading: isSyncing,
-        disabled: isSyncing
-      }}
-    >
-      <Layout>
-        {error && (
-          <Layout.Section>
-            <Banner tone="critical">
-              <p>Error: {error}</p>
-            </Banner>
-          </Layout.Section>
+    <s-page heading="Saddle Serial Number Manager">
+      <s-section>
+        <s-button 
+          variant="primary" 
+          onClick={() => {
+            const formData = new FormData();
+            formData.append("actionType", "syncOrders");
+            fetch("", { method: "POST", body: formData }).then(() => window.location.reload());
+          }}
+        >
+          Sync Orders from Shopify
+        </s-button>
+      </s-section>
+
+      {error && (
+        <s-section>
+          <s-banner tone="critical">
+            <s-text>Error: {error}</s-text>
+          </s-banner>
+        </s-section>
+      )}
+
+      <s-section heading={`Orders with Saddles (${totalOrders} total)`}>
+        {totalPages > 1 && (
+          <s-stack direction="inline" gap="tight" alignment="center">
+            <a href={`?page=${currentPage - 1}`} style={{ pointerEvents: currentPage === 1 ? 'none' : 'auto' }}>
+              <s-button disabled={currentPage === 1}>← Previous</s-button>
+            </a>
+            <s-text>Page {currentPage} of {totalPages}</s-text>
+            <a href={`?page=${currentPage + 1}`} style={{ pointerEvents: currentPage === totalPages ? 'none' : 'auto' }}>
+              <s-button disabled={currentPage === totalPages}>Next →</s-button>
+            </a>
+          </s-stack>
         )}
 
-        {actionData?.success === false && (
-          <Layout.Section>
-            <Banner tone="critical">
-              <p>Error: {actionData.error}</p>
-            </Banner>
-          </Layout.Section>
-        )}
-
-        {actionData?.success === true && (
-          <Layout.Section>
-            <Banner tone="success">
-              <p>{actionData.message}</p>
-            </Banner>
-          </Layout.Section>
-        )}
-
-        <Layout.Section>
-          <Card>
-            <BlockStack gap="400">
-              <InlineStack align="space-between" blockAlign="center">
-                <Text variant="headingMd">
-                  Orders with Saddles ({totalOrders} total)
-                </Text>
-                {totalPages > 1 && (
-                  <InlineStack gap="200">
-                    <Button
-                      disabled={currentPage === 1}
-                      url={`?page=${currentPage - 1}`}
-                    >
-                      ← Previous
-                    </Button>
-                    <Text variant="bodySm">
-                      Page {currentPage} of {totalPages}
-                    </Text>
-                    <Button
-                      disabled={currentPage === totalPages}
-                      url={`?page=${currentPage + 1}`}
-                    >
-                      Next →
-                    </Button>
-                  </InlineStack>
-                )}
-              </InlineStack>
-
-              <Divider />
-
-              {orders && orders.length > 0 ? (
-                <BlockStack gap="400">
-                  {orders.map((order) => {
-                    const saddleItems = order.lineItems.filter(
-                      (item) => item.hasSaddleTag
-                    );
-
-                    return (
-                      <Card key={order.id}>
-                        <BlockStack gap="300">
-                          <Text variant="headingMd">Order {order.orderName}</Text>
-                          
-                          <BlockStack gap="200">
-                            <Text variant="bodyMd">
-                              <strong>Customer:</strong> {order.customer.name}
-                            </Text>
-                            {order.customer.email && (
-                              <Text variant="bodySm">{order.customer.email}</Text>
+        {orders && orders.length > 0 ? (
+          <s-stack direction="block" gap="base">
+            {orders.map((order) => {
+              const saddleItems = order.lineItems.filter(item => item.hasSaddleTag);
+              
+              return (
+                <s-box key={order.id} padding="base" borderWidth="base" borderRadius="base" background="subdued">
+                  <s-stack direction="block" gap="tight">
+                    <s-text variant="headingMd">Order {order.orderName}</s-text>
+                    <s-text variant="bodyMd" fontWeight="semibold">Customer: {order.customer.name}</s-text>
+                    {order.customer.email && <s-text variant="bodySm">{order.customer.email}</s-text>}
+                    <s-text variant="bodySm">Date: {new Date(order.createdAt).toLocaleDateString()}</s-text>
+                    
+                    <s-stack direction="block" gap="tight">
+                      <s-text variant="bodySm" fontWeight="semibold">Saddles:</s-text>
+                      {saddleItems.map((item) => (
+                        <s-box key={item.id} padding="base" background="surface" borderRadius="base" borderWidth="base">
+                          <s-stack direction="block" gap="tight">
+                            <s-text variant="bodyMd" fontWeight="semibold">{item.title} (Qty: {item.quantity})</s-text>
+                            {Object.keys(item.options).length > 0 && (
+                              <s-stack direction="inline" gap="tight">
+                                {Object.entries(item.options).map(([key, value]) => (
+                                  <s-text key={key} variant="bodySm">{key}: {value}</s-text>
+                                ))}
+                              </s-stack>
                             )}
-                            <Text variant="bodySm">
-                              <strong>Date:</strong>{" "}
-                              {new Date(order.createdAt).toLocaleDateString()}
-                            </Text>
-                            <Text variant="bodySm">
-                              <strong>Status:</strong> {order.fulfillmentStatus}
-                            </Text>
-                          </BlockStack>
-
-                          <Divider />
-
-                          <BlockStack gap="300">
-                            <Text variant="headingSm">Saddles:</Text>
-                            {saddleItems.map((item) => (
-                              <Card key={item.id} background="bg-surface-secondary">
-                                <BlockStack gap="200">
-                                  <Text variant="bodyMd">
-                                    <strong>{item.title}</strong> (Qty: {item.quantity})
-                                  </Text>
-                                  {Object.keys(item.options).length > 0 && (
-                                    <InlineStack gap="200">
-                                      {Object.entries(item.options).map(
-                                        ([key, value]) => (
-                                          <Text key={key} variant="bodySm">
-                                            {key}: {value}
-                                          </Text>
-                                        )
-                                      )}
-                                    </InlineStack>
-                                  )}
-                                  <TextField
-                                    label="Serial Number"
-                                    placeholder="Enter serial number"
-                                    defaultValue={item.serialNumber || ""}
-                                    autoComplete="off"
-                                    onBlur={(e) => {
-                                      const formData = new FormData();
-                                      formData.append("actionType", "saveSerial");
-                                      formData.append("orderId", order.id);
-                                      formData.append("lineItemId", item.id);
-                                      formData.append("serialNumber", e.target.value);
-                                      submit(formData, { method: "post" });
-                                    }}
-                                  />
-                                  {item.serialNumber && (
-                                    <Text variant="bodySm" tone="success">
-                                      ✓ Saved: {item.serialNumber}
-                                    </Text>
-                                  )}
-                                </BlockStack>
-                              </Card>
-                            ))}
-                          </BlockStack>
-                        </BlockStack>
-                      </Card>
-                    );
-                  })}
-                </BlockStack>
-              ) : (
-                <BlockStack gap="300">
-                  <Text>No orders in database. Click "Sync Orders from Shopify" to load orders.</Text>
-                </BlockStack>
-              )}
-
-              {totalPages > 1 && (
-                <>
-                  <Divider />
-                  <InlineStack align="center" gap="200">
-                    <Button
-                      disabled={currentPage === 1}
-                      url={`?page=${currentPage - 1}`}
-                    >
-                      ← Previous
-                    </Button>
-                    <Text variant="bodySm">
-                      Page {currentPage} of {totalPages}
-                    </Text>
-                    <Button
-                      disabled={currentPage === totalPages}
-                      url={`?page=${currentPage + 1}`}
-                    >
-                      Next →
-                    </Button>
-                  </InlineStack>
-                </>
-              )}
-            </BlockStack>
-          </Card>
-        </Layout.Section>
-      </Layout>
-    </Page>
+                            <input
+                              type="text"
+                              defaultValue={item.serialNumber || ""}
+                              placeholder="Enter serial number"
+                              onBlur={(e) => {
+                                const formData = new FormData();
+                                formData.append("actionType", "saveSerial");
+                                formData.append("orderId", order.id);
+                                formData.append("lineItemId", item.id);
+                                formData.append("serialNumber", e.target.value);
+                                fetch("", { method: "POST", body: formData });
+                              }}
+                              style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px', width: '300px' }}
+                            />
+                            {item.serialNumber && (
+                              <s-text variant="bodySm" tone="success">✓ Saved: {item.serialNumber}</s-text>
+                            )}
+                          </s-stack>
+                        </s-box>
+                      ))}
+                    </s-stack>
+                  </s-stack>
+                </s-box>
+              );
+            })}
+          </s-stack>
+        ) : (
+          <s-text>No orders in database. Click "Sync Orders from Shopify" to load orders.</s-text>
+        )}
+      </s-section>
+    </s-page>
   );
 }
+
+export const headers = (headersArgs) => {
+  return boundary.headers(headersArgs);
+};
