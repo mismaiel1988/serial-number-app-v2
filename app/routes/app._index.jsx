@@ -128,7 +128,6 @@ export const action = async ({ request }) => {
           product_sku: null, // Not used in this context
           product_options: null, // Not used in this context
           quantity: null, // Not used in this context
-          serial_numbers: null, // Will be set later
           last_synced: new Date(),
           // Add more fields as needed
           serial_numbers: JSON.stringify(
@@ -207,104 +206,8 @@ export const action = async ({ request }) => {
   return { success: false, error: "Unknown action" };
 };
 
-export default function App() {
-  const { orders, error, currentPage, totalPages, totalOrders, fromDatabase } = useLoaderData();
-
-  return (
-    <s-page heading="Saddle Serial Number Manager">
-      <s-section>
-        <s-button 
-          variant="primary" 
-          onClick={() => {
-            const formData = new FormData();
-            formData.append("actionType", "syncOrders");
-            fetch("", { method: "POST", body: formData }).then(() => window.location.reload());
-          }}
-        >
-          Sync Orders from Shopify
-        </s-button>
-      </s-section>
-
-      {error && (
-        <s-section>
-          <s-banner tone="critical">
-            <s-text>Error: {error}</s-text>
-          </s-banner>
-        </s-section>
-      )}
-
-      <s-section heading={`Orders with Saddles (${totalOrders} total)`}>
-        {totalPages > 1 && (
-          <s-stack direction="inline" gap="tight" alignment="center">
-            <a href={`?page=${currentPage - 1}`} style={{ pointerEvents: currentPage === 1 ? 'none' : 'auto' }}>
-              <s-button disabled={currentPage === 1}>← Previous</s-button>
-            </a>
-            <s-text>Page {currentPage} of {totalPages}</s-text>
-            <a href={`?page=${currentPage + 1}`} style={{ pointerEvents: currentPage === totalPages ? 'none' : 'auto' }}>
-              <s-button disabled={currentPage === totalPages}>Next →</s-button>
-            </a>
-          </s-stack>
-        )}
-
-        {orders && orders.length > 0 ? (
-          <s-stack direction="block" gap="base">
-            {orders.map((order) => {
-              const saddleItems = Array.isArray(order.serialNumbers) ? order.serialNumbers.filter(item => item.hasSaddleTag) : [];
-              
-              return (
-                <s-box key={order.id} padding="base" borderWidth="base" borderRadius="base" background="subdued">
-                  <s-stack direction="block" gap="tight">
-                    <s-text variant="headingMd">Order {order.orderName}</s-text>
-                    <s-text variant="bodyMd" fontWeight="semibold">Customer: {order.customer_name}</s-text>
-                    {order.customer_email && <s-text variant="bodySm">{order.customer_email}</s-text>}
-                    <s-text variant="bodySm">Date: {new Date(order.createdAt).toLocaleDateString()}</s-text>
-                    
-                    <s-stack direction="block" gap="tight">
-                      <s-text variant="bodySm" fontWeight="semibold">Saddles:</s-text>
-                      {saddleItems.map((item) => (
-                        <s-box key={item.id} padding="base" background="surface" borderRadius="base" borderWidth="base">
-                          <s-stack direction="block" gap="tight">
-                            <s-text variant="bodyMd" fontWeight="semibold">{item.title} (Qty: {item.quantity})</s-text>
-                            {Object.keys(item.options).length > 0 && (
-                              <s-stack direction="inline" gap="tight">
-                                {Object.entries(item.options).map(([key, value]) => (
-                                  <s-text key={key} variant="bodySm">{key}: {value}</s-text>
-                                ))}
-                              </s-stack>
-                            )}
-                            <input
-                              type="text"
-                              defaultValue={item.serialNumber || ""}
-                              placeholder="Enter serial number"
-                              onBlur={(e) => {
-                                const formData = new FormData();
-                                formData.append("actionType", "saveSerial");
-                                formData.append("orderId", order.id);
-                                formData.append("lineItemId", item.id);
-                                formData.append("serialNumber", e.target.value);
-                                fetch("", { method: "POST", body: formData });
-                              }}
-                              style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px', width: '300px' }}
-                            />
-                            {item.serialNumber && (
-                              <s-text variant="bodySm" tone="success">✓ Saved: {item.serialNumber}</s-text>
-                            )}
-                          </s-stack>
-                        </s-box>
-                      ))}
-                    </s-stack>
-                  </s-stack>
-                </s-box>
-              );
-            })}
-          </s-stack>
-        ) : (
-          <s-text>No orders in database. Click "Sync Orders from Shopify" to load orders.</s-text>
-        )}
-      </s-section>
-    </s-page>
-  );
-}
+import OrdersIndexPage from "./orders._index.jsx";
+export default OrdersIndexPage;
 
 export const headers = (headersArgs) => {
   return boundary.headers(headersArgs);
