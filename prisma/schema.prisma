@@ -1,3 +1,18 @@
+model saddle_orders {
+  id             Int      @id @default(autoincrement())
+  order_name     String?
+  order_id       String?
+  customer_name  String?
+  customer_email String?
+  created_at     DateTime?
+  line_item_id   String?
+  product_title  String?
+  product_sku    String?
+  product_options String?
+  quantity       Int?
+  serial_numbers String?   // JSON array as string
+  last_synced    DateTime?
+}
 // ===============================
 // Prisma Client
 // ===============================
@@ -96,13 +111,4 @@ model SerialNumber {
   lineItem        LineItem @relation(fields: [lineItemId], references: [id])
 
   createdAt       DateTime @default(now())
-}
-model SaddleOrder {
-  id             String   @id @default(cuid())
-  shopifyOrderId String   @unique
-  orderName      String
-  createdAt      DateTime @default(now())
-  fulfillmentStatus String
-  customer       String   // JSON string
-  lineItems      String   // JSON string
 }

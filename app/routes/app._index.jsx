@@ -6,59 +6,42 @@ import db from "../db.server";
 export const loader = async ({ request }) => {
   try {
     const { admin } = await authenticate.admin(request);
-
+    
     const url = new URL(request.url);
     const page = parseInt(url.searchParams.get('page') || '1');
     const perPage = 10;
 
-    // Get total count from database with error handling
-    let totalOrders = 0;
-    try {
-      totalOrders = await db.saddleOrders.count(); // Updated model name
-    } catch (error) {
-      console.error("Error fetching total order count:", error);
-      totalOrders = 0; // Default to 0 if count fails
-    }
-
-    // Get paginated orders from database with error handling
-    let orders = [];
-    try {
-      orders = await db.saddleOrders.findMany({ // Updated model name
-        skip: (page - 1) * perPage,
-        take: perPage,
-        orderBy: {
-          createdAt: 'desc',
-        },
-      });
-    } catch (error) {
-      console.error("Error fetching orders:", error);
-      orders = []; // Default to empty array if fetching fails
-    }
-
+    // Get total count from database
+    const totalOrders = await db.saddle_orders.count();
+    // Get paginated orders from database
+    const orders = await db.saddle_orders.findMany({
+      skip: (page - 1) * perPage,
+      take: perPage,
+      orderBy: {
+        created_at: 'desc'
+      }
+    });
     const totalPages = Math.ceil(totalOrders / perPage);
-
     console.log(`Showing ${orders.length} orders from database (page ${page} of ${totalPages})`);
-
     return {
-      orders: orders.map((order) => ({
+      orders: orders.map(order => ({
         ...order,
-        lineItems: JSON.parse(order.lineItems),
-        customer: JSON.parse(order.customer),
+        serialNumbers: order.serial_numbers ? JSON.parse(order.serial_numbers) : [],
       })),
       currentPage: page,
       totalPages: totalPages,
       totalOrders: totalOrders,
-      fromDatabase: true,
+      fromDatabase: true
     };
   } catch (error) {
     console.error("Loader error:", error);
-    return {
-      orders: [],
+    return { 
+      orders: [], 
       error: error.message,
       currentPage: 1,
       totalPages: 0,
       totalOrders: 0,
-      fromDatabase: false,
+      fromDatabase: false
     };
   }
 };
@@ -73,7 +56,7 @@ export const action = async ({ request }) => {
       console.log("Starting sync of all saddle orders...");
       
       // Clear existing orders
-      await db.saddleOrder.deleteMany({});
+      await db.saddle_orders.deleteMany({});
       console.log("Cleared existing orders from database");
       
       // Fetch ALL orders from Shopify
@@ -187,7 +170,7 @@ export const action = async ({ request }) => {
       
       // Save all orders to database
       if (allOrders.length > 0) {
-        await db.saddleOrder.createMany({
+        await db.saddle_orders.createMany({
           data: allOrders
         });
         console.log(`Saved ${allOrders.length} orders to database`);
@@ -210,27 +193,26 @@ export const action = async ({ request }) => {
     const serialNumber = formData.get("serialNumber");
 
     try {
-      const order = await db.saddleOrder.findUnique({
+      const order = await db.saddle_orders.findUnique({
         where: { id: parseInt(orderId) }
       });
-      
       if (order) {
-        const lineItems = JSON.parse(order.lineItems);
-        const updatedLineItems = lineItems.map(item => {
-          if (item.id === lineItemId) {
-            return { ...item, serialNumber };
-          }
-          return item;
-        });
-        
-        await db.saddleOrder.update({
+        let serialNumbers = order.serial_numbers ? JSON.parse(order.serial_numbers) : [];
+        // If serialNumbers is not an array, make it one
+        if (!Array.isArray(serialNumbers)) serialNumbers = [];
+        // Add or update serial for this line item
+        const idx = serialNumbers.findIndex(sn => sn.lineItemId === lineItemId);
+        if (idx > -1) {
+          serialNumbers[idx].serialNumber = serialNumber;
+        } else {
+          serialNumbers.push({ lineItemId, serialNumber });
+        }
+        await db.saddle_orders.update({
           where: { id: parseInt(orderId) },
-          data: { lineItems: JSON.stringify(updatedLineItems) }
+          data: { serial_numbers: JSON.stringify(serialNumbers) }
         });
-        
         return { success: true, message: "Serial number saved" };
       }
-      
       return { success: false, error: "Order not found" };
     } catch (error) {
       return { success: false, error: error.message };
